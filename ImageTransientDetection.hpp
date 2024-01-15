@@ -35,7 +35,10 @@ class ImageTransientDetection
             cv::Mat &detectionFrame,
             cv::Rect &detectionBox);
 
+        void getLastFrame(cv::Mat &buffer);
+
     private:
+        cv::Mat lastFrame;
         cv::Mat averageFrame;
         bool averageFrameSet = false;
         cv::Mat nextAverageFrame;
@@ -90,7 +93,6 @@ void ImageTransientDetection::setNewAverageFrameCallback(
 }
 
 
-void setMaximumSize(uint32_t size);
 bool ImageTransientDetection::detect(
     cv::Mat &frame,
     cv::Mat &detectionFrame,
@@ -104,6 +106,8 @@ bool ImageTransientDetection::detect(
                 cv::Mat::zeros(frame.size(), frame.type());
     }
 
+    this->lastFrame = frame.clone();
+    
     cv::add(
             this->nextAverageFrame, 
             frame, 
@@ -195,4 +199,9 @@ bool ImageTransientDetection::detect(
     }
 
     return validDetectionSet;
+}
+
+void ImageTransientDetection::getLastFrame(cv::Mat &buffer)
+{
+    buffer = this->lastFrame.clone();
 }

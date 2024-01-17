@@ -30,26 +30,37 @@ class ImageTransientDetection
         void setMaximumSize(uint32_t size);
         void setNewAverageFrameCallback(std::function<void(cv::Mat)> callback);
 
+        void disableDetection(void);
+        void enableDetection(void);
+        bool isDetectionEnabled(void);
+
         bool detect(
             cv::Mat &frame,
             cv::Mat &detectionFrame,
             cv::Rect &detectionBox);
 
-        void getLastFrame(cv::Mat &buffer);
-
+        void getLastRawFrame(cv::Mat &buffer);
+        void getLastDiffedFrame(cv::Mat &buffer);
+        void getLastThresholdedFrame(cv::Mat &buffer);
+        void getAverageFrame(cv::Mat &buffer);
     private:
-        cv::Mat lastFrame;
+        cv::Mat lastRawFrame;
+        cv::Mat lastDiffedFrame;
+        cv::Mat lastThresholdedFrame;
+
         cv::Mat averageFrame;
         bool averageFrameSet = false;
         cv::Mat nextAverageFrame;
         uint32_t nextAverageFrameCount;
         
 
-        uint32_t threshold;
-        uint32_t minimumSize;
-        uint32_t maximumSize;
-        uint32_t numberOfFramesInAverageFrame = 0;
+        volatile uint32_t threshold = 1000;
+        volatile uint32_t minimumSize = 1;
+        volatile uint32_t maximumSize = 100;
+        volatile uint32_t numberOfFramesInAverageFrame = 1;
         std::function<void(cv::Mat)> newAverageFrameCallback;
+
+        volatile bool detectionEnabled = true;
 };
 
 ImageTransientDetection::ImageTransientDetection(
@@ -92,6 +103,20 @@ void ImageTransientDetection::setNewAverageFrameCallback(
     this->newAverageFrameCallback = callback;
 }
 
+void ImageTransientDetection::disableDetection(void)
+{
+    detectionEnabled = false;
+}
+
+void ImageTransientDetection::enableDetection(void)
+{
+    detectionEnabled = true;
+}
+
+bool ImageTransientDetection::isDetectionEnabled(void)
+{
+    return detectionEnabled;
+}
 
 bool ImageTransientDetection::detect(
     cv::Mat &frame,
@@ -106,7 +131,7 @@ bool ImageTransientDetection::detect(
                 cv::Mat::zeros(frame.size(), frame.type());
     }
 
-    this->lastFrame = frame.clone();
+    this->lastRawFrame = frame.clone();
     
     cv::add(
             this->nextAverageFrame, 
@@ -139,6 +164,8 @@ bool ImageTransientDetection::detect(
         double maxValue;
         
         cv::subtract(frame, this->averageFrame, subtractedFrame);
+        this->lastDiffedFrame = subtractedFrame.clone();
+
         cv::minMaxLoc(
             subtractedFrame, 
             &minValue, 
@@ -149,6 +176,13 @@ bool ImageTransientDetection::detect(
             this->threshold, 
             maxValue,
             cv::THRESH_BINARY);
+        this->lastThresholdedFrame = thresholdFrame.clone();
+
+        /* If detection is not enabled, just return false now...*/
+        if(false == this->detectionEnabled)
+        {
+            return false;
+        }
 
         thresholdFrame.convertTo(thresholdFrame, CV_8U);
 
@@ -188,11 +222,17 @@ bool ImageTransientDetection::detect(
             else
             {
                 validDetectionSet = true;
+
+                int centerX = stats.at<int>(i, cv::CC_STAT_LEFT) + stats.at<int>(i, cv::CC_STAT_WIDTH) / 2;
+                int centerY = stats.at<int>(i, cv::CC_STAT_TOP) + stats.at<int>(i, cv::CC_STAT_HEIGHT) / 2;
+                int newX = centerX - 100 / 2;
+                int newY = centerY - 100 / 2;
+
                 detectionBox = cv::Rect(
-                    stats.at<int>(i, cv::CC_STAT_LEFT), 
-                    stats.at<int>(i, cv::CC_STAT_TOP),
-                    stats.at<int>(i, cv::CC_STAT_WIDTH),
-                    stats.at<int>(i, cv::CC_STAT_HEIGHT));
+                    newX, 
+                    newY,
+                    100,
+                    100);
                 detectionFrame = frame(detectionBox);
             }
         }
@@ -201,7 +241,22 @@ bool ImageTransientDetection::detect(
     return validDetectionSet;
 }
 
-void ImageTransientDetection::getLastFrame(cv::Mat &buffer)
+void ImageTransientDetection::getLastRawFrame(cv::Mat &buffer)
 {
-    buffer = this->lastFrame.clone();
+    buffer = this->lastRawFrame.clone();
+}
+
+void ImageTransientDetection::getLastDiffedFrame(cv::Mat &buffer)
+{
+    buffer = this->lastDiffedFrame.clone();
+}
+
+void ImageTransientDetection::getLastThresholdedFrame(cv::Mat &buffer)
+{
+    buffer = this->lastThresholdedFrame.clone();
+}
+
+void ImageTransientDetection::getAverageFrame(cv::Mat &buffer)
+{
+    buffer = this->averageFrame.clone();
 }

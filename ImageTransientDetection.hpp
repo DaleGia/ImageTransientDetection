@@ -37,7 +37,8 @@ class ImageTransientDetection
         bool detect(
             cv::Mat &frame,
             cv::Mat &detectionFrame,
-            cv::Rect &detectionBox);
+            cv::Rect &detectionBox,
+            uint32_t &detectionSize);
 
         void getLastRawFrame(cv::Mat &buffer);
         void getLastDiffedFrame(cv::Mat &buffer);
@@ -121,7 +122,8 @@ bool ImageTransientDetection::isDetectionEnabled(void)
 bool ImageTransientDetection::detect(
     cv::Mat &frame,
     cv::Mat &detectionFrame,
-    cv::Rect &detectionBox)
+    cv::Rect &detectionBox,
+    uint32_t &detectionSize)
 {
     bool validDetectionSet = false;
 
@@ -233,6 +235,7 @@ bool ImageTransientDetection::detect(
                     newY,
                     100,
                     100);
+                detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
                 detectionFrame = frame(detectionBox);
             }
         }

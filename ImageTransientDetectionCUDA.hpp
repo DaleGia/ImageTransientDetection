@@ -1,5 +1,5 @@
 /**
- * @file ImageTransientDetection.hpp
+ * @file ImageTransientDetectionCUDA.hpp
  * Copyright (c) 2023 Dale Giancono All rights reserved.
  * 
  * @brief
@@ -9,18 +9,21 @@
 #include <iostream>
 #include <vector>
 #include <opencv2/opencv.hpp>
+#include <opencv2/core/cuda.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudaarithm.hpp>
 #include "Benchmark.hpp"
 
 
 
-class ImageTransientDetection
+class ImageTransientDetectionCUDA
 {
     public:
-        ImageTransientDetection()
+        ImageTransientDetectionCUDA()
         {
         }
 
-        ImageTransientDetection(
+        ImageTransientDetectionCUDA(
             uint16_t threshold,
             uint32_t minimumSize,
             uint32_t maximumSize,
@@ -48,13 +51,13 @@ class ImageTransientDetection
         void getLastThresholdedFrame(cv::Mat &buffer);
         void getAverageFrame(cv::Mat &buffer);
     private:
-        cv::Mat lastRawFrame;
-        cv::Mat lastDiffedFrame;
-        cv::Mat lastThresholdedFrame;
+        cv::cuda::GpuMat lastRawFrame;
+        cv::cuda::GpuMat lastDiffedFrame;
+        cv::cuda::GpuMat lastThresholdedFrame;
 
-        cv::Mat averageFrame;
+        cv::cuda::GpuMat averageFrame;
         bool averageFrameSet = false;
-        cv::Mat nextAverageFrame;
+        cv::cuda::GpuMat nextAverageFrame;
         uint32_t nextAverageFrameCount;
         
 
@@ -69,9 +72,12 @@ class ImageTransientDetection
         Benchmark detectTime;
         Benchmark imageProcessTime;
         Benchmark transientDetectTime;
+        Benchmark upload;
+        Benchmark add;
+        Benchmark divide;
 };
 
-ImageTransientDetection::ImageTransientDetection(
+ImageTransientDetectionCUDA::ImageTransientDetectionCUDA(
     uint16_t threshold,
     uint32_t minimumSize,
     uint32_t maximumSize,
@@ -85,84 +91,90 @@ ImageTransientDetection::ImageTransientDetection(
     this->newAverageFrameCallback = averageFrameCallback;
 }
 
-void ImageTransientDetection::setNumberOfAverageFrames(uint32_t frames)
+void ImageTransientDetectionCUDA::setNumberOfAverageFrames(uint32_t frames)
 {
     this->numberOfFramesInAverageFrame = frames;
 }
 
-void ImageTransientDetection::setThreshold(uint32_t threshold)
+void ImageTransientDetectionCUDA::setThreshold(uint32_t threshold)
 {
     this->threshold = threshold;
 }
 
-void ImageTransientDetection::setMinimumSize(uint32_t size)
+void ImageTransientDetectionCUDA::setMinimumSize(uint32_t size)
 {
     this->minimumSize = size;
 }
 
-void ImageTransientDetection::setMaximumSize(uint32_t size)
+void ImageTransientDetectionCUDA::setMaximumSize(uint32_t size)
 {
     this->maximumSize = size;
 }
 
-void ImageTransientDetection::setNewAverageFrameCallback(
+void ImageTransientDetectionCUDA::setNewAverageFrameCallback(
     std::function<void(cv::Mat)> callback)
 {
     this->newAverageFrameCallback = callback;
 }
 
-void ImageTransientDetection::disableDetection(void)
+void ImageTransientDetectionCUDA::disableDetection(void)
 {
     detectionEnabled = false;
 }
 
-void ImageTransientDetection::enableDetection(void)
+void ImageTransientDetectionCUDA::enableDetection(void)
 {
     detectionEnabled = true;
 }
 
-bool ImageTransientDetection::isDetectionEnabled(void)
+bool ImageTransientDetectionCUDA::isDetectionEnabled(void)
 {
     return detectionEnabled;
 }
 
-bool ImageTransientDetection::detect(
+bool ImageTransientDetectionCUDA::detect(
     cv::Mat &frame,
     cv::Mat &detectionFrame,
     cv::Rect &detectionBox,
     uint32_t &detectionSize)
 {
+
+
     detectTime.start();
     imageProcessTime.start();
-
+    double minValue = 0; 
+    double maxValue = 0;
     bool validDetectionSet = false;
 
     if(this->nextAverageFrame.empty())
     {
-        this->nextAverageFrame = 
-                cv::Mat::zeros(frame.size(), frame.type());
-    }
+        this->nextAverageFrame.create(frame.size(), frame.type());
+        this->nextAverageFrame.setTo(cv::Scalar::all(0));
 
-    this->lastRawFrame = frame.clone();
-    
-    cv::add(
+    }
+    upload.start();
+    this->lastRawFrame.upload(frame);
+    upload.stop();
+    add.start();
+    cv::cuda::add(
+            this->lastRawFrame,
             this->nextAverageFrame, 
-            frame, 
             this->nextAverageFrame);
-    this->nextAverageFrame /= 2;
+    add.stop();
+    divide.start();
+    cv::cuda::divide(this->nextAverageFrame, 2, this->nextAverageFrame);
+    divide.stop();
     this->nextAverageFrameCount++;
     if(this->nextAverageFrameCount >= numberOfFramesInAverageFrame)
     {
         this->nextAverageFrameCount = 0;
-        this->averageFrame = 
-            cv::Mat::zeros(frame.size(), frame.type()); 
-        this->averageFrame = this->nextAverageFrame.clone();
-        this->nextAverageFrame = 
-            cv::Mat::zeros(frame.size(), frame.type());        
-
+        this->nextAverageFrame.copyTo(this->averageFrame);
+        this->nextAverageFrame.setTo(cv::Scalar::all(0));
         if(nullptr != this->newAverageFrameCallback)
         {
-            this->newAverageFrameCallback(this->averageFrame.clone());
+            cv::Mat image;
+            this->averageFrame.download(image);
+            this->newAverageFrameCallback(image);
         }    
     }
 
@@ -170,27 +182,22 @@ bool ImageTransientDetection::detect(
     transientDetectTime.start();
     if(!this->averageFrame.empty())
     {
-        /* This is the actual detection */
-        cv::Mat subtractedFrame;
-        cv::Mat thresholdFrame;
 
-        double minValue; 
-        double maxValue;
-        
-        cv::subtract(frame, this->averageFrame, subtractedFrame);
-        this->lastDiffedFrame = subtractedFrame.clone();
+        cv::cuda::subtract(this->lastRawFrame, this->averageFrame, this->lastDiffedFrame);
 
-        cv::minMaxLoc(
-            subtractedFrame, 
+        cv::cuda::minMaxLoc(
+            this->lastDiffedFrame, 
             &minValue, 
-            &maxValue);
-        cv::threshold(
-            subtractedFrame, 
-            thresholdFrame, 
+            &maxValue,
+            NULL,
+            NULL);
+                    
+        cv::cuda::threshold(
+            this->lastDiffedFrame, 
+            this->lastThresholdedFrame, 
             this->threshold, 
             maxValue,
             cv::THRESH_BINARY);
-        this->lastThresholdedFrame = thresholdFrame.clone();
 
         /* If detection is not enabled, just return false now...*/
         if(false == this->detectionEnabled)
@@ -198,8 +205,10 @@ bool ImageTransientDetection::detect(
             return false;
         }
 
-        thresholdFrame.convertTo(thresholdFrame, CV_8U);
+        this->lastThresholdedFrame.convertTo(this->lastThresholdedFrame, CV_8U);
 
+        cv::Mat threshold;
+        this->lastThresholdedFrame.download(threshold);
         
         int num_labels;
         cv::Mat labels;
@@ -207,11 +216,11 @@ bool ImageTransientDetection::detect(
         cv::Mat centroids;
         num_labels = 
             cv::connectedComponentsWithStats(
-                thresholdFrame, 
+                threshold, 
                 labels, 
                 stats, 
                 centroids, 
-                4, 
+                8, 
                 CV_32S);
 
         for(int i = 1; i < num_labels; ++i) 
@@ -248,12 +257,16 @@ bool ImageTransientDetection::detect(
                     100,
                     100);
                 detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
-                detectionFrame = frame(detectionBox);
+                this->lastRawFrame.download(detectionFrame);
+                detectionFrame = detectionFrame(detectionBox);
             }
         }
     }
     transientDetectTime.stop();
     detectTime.stop();
+    upload.print("upload");
+    add.print("add");
+    divide.print("divide");
     imageProcessTime.print("image processing");
     transientDetectTime.print("transient detection");
     detectTime.print("function");
@@ -261,22 +274,30 @@ bool ImageTransientDetection::detect(
     return validDetectionSet;
 }
 
-void ImageTransientDetection::getLastRawFrame(cv::Mat &buffer)
+void ImageTransientDetectionCUDA::getLastRawFrame(cv::Mat &buffer)
 {
-    buffer = this->lastRawFrame.clone();
+    cv::Mat image;
+    this->lastRawFrame.download(image);
+    buffer = image.clone();
 }
 
-void ImageTransientDetection::getLastDiffedFrame(cv::Mat &buffer)
+void ImageTransientDetectionCUDA::getLastDiffedFrame(cv::Mat &buffer)
 {
-    buffer = this->lastDiffedFrame.clone();
+    cv::Mat image;
+    this->lastDiffedFrame.download(image);
+    buffer = image.clone();
 }
 
-void ImageTransientDetection::getLastThresholdedFrame(cv::Mat &buffer)
+void ImageTransientDetectionCUDA::getLastThresholdedFrame(cv::Mat &buffer)
 {
-    buffer = this->lastThresholdedFrame.clone();
+    cv::Mat image;
+    this->lastThresholdedFrame.download(image);
+    buffer = image.clone();
 }
 
-void ImageTransientDetection::getAverageFrame(cv::Mat &buffer)
+void ImageTransientDetectionCUDA::getAverageFrame(cv::Mat &buffer)
 {
-    buffer = this->averageFrame.clone();
+    cv::Mat image;
+    this->averageFrame.download(image);
+    buffer = image.clone();
 }

@@ -66,9 +66,9 @@ class ImageTransientDetection
 
         volatile bool detectionEnabled = true;
 
-        Benchmark detectTime;
-        Benchmark imageProcessTime;
-        Benchmark transientDetectTime;
+        // Benchmark detectTime;
+        // Benchmark imageProcessTime;
+        // Benchmark transientDetectTime;
 };
 
 ImageTransientDetection::ImageTransientDetection(
@@ -132,8 +132,8 @@ bool ImageTransientDetection::detect(
     cv::Rect &detectionBox,
     uint32_t &detectionSize)
 {
-    detectTime.start();
-    imageProcessTime.start();
+    // detectTime.start();
+    // imageProcessTime.start();
 
     bool validDetectionSet = false;
 
@@ -166,8 +166,8 @@ bool ImageTransientDetection::detect(
         }    
     }
 
-    imageProcessTime.stop();
-    transientDetectTime.start();
+    // imageProcessTime.stop();
+    // transientDetectTime.start();
     if(!this->averageFrame.empty())
     {
         /* This is the actual detection */
@@ -252,12 +252,12 @@ bool ImageTransientDetection::detect(
             }
         }
     }
-    transientDetectTime.stop();
-    detectTime.stop();
-    imageProcessTime.print("image processing");
-    transientDetectTime.print("transient detection");
-    detectTime.print("function");
-    std::cout << std::endl;
+    // transientDetectTime.stop();
+    // detectTime.stop();
+    // imageProcessTime.print("image processing");
+    // transientDetectTime.print("transient detection");
+    // detectTime.print("function");
+    // std::cout << std::endl;
     return validDetectionSet;
 }
 

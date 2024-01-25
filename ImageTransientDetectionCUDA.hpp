@@ -69,12 +69,12 @@ class ImageTransientDetectionCUDA
 
         volatile bool detectionEnabled = true;
 
-        Benchmark detectTime;
-        Benchmark imageProcessTime;
-        Benchmark transientDetectTime;
-        Benchmark upload;
-        Benchmark add;
-        Benchmark divide;
+        // Benchmark detectTime;
+        // Benchmark imageProcessTime;
+        // Benchmark transientDetectTime;
+        // Benchmark upload;
+        // Benchmark add;
+        // Benchmark divide;
 };
 
 ImageTransientDetectionCUDA::ImageTransientDetectionCUDA(
@@ -140,8 +140,8 @@ bool ImageTransientDetectionCUDA::detect(
 {
 
 
-    detectTime.start();
-    imageProcessTime.start();
+    // detectTime.start();
+    // imageProcessTime.start();
     double minValue = 0; 
     double maxValue = 0;
     bool validDetectionSet = false;
@@ -152,18 +152,18 @@ bool ImageTransientDetectionCUDA::detect(
         this->nextAverageFrame.setTo(cv::Scalar::all(0));
 
     }
-    upload.start();
+    // upload.start();
     this->lastRawFrame.upload(frame);
-    upload.stop();
-    add.start();
+    // upload.stop();
+    // add.start();
     cv::cuda::add(
             this->lastRawFrame,
             this->nextAverageFrame, 
             this->nextAverageFrame);
-    add.stop();
-    divide.start();
+    // add.stop();
+    // divide.start();
     cv::cuda::divide(this->nextAverageFrame, 2, this->nextAverageFrame);
-    divide.stop();
+    // divide.stop();
     this->nextAverageFrameCount++;
     if(this->nextAverageFrameCount >= numberOfFramesInAverageFrame)
     {
@@ -178,8 +178,8 @@ bool ImageTransientDetectionCUDA::detect(
         }    
     }
 
-    imageProcessTime.stop();
-    transientDetectTime.start();
+    // imageProcessTime.stop();
+    // transientDetectTime.start();
     if(!this->averageFrame.empty())
     {
 
@@ -262,15 +262,15 @@ bool ImageTransientDetectionCUDA::detect(
             }
         }
     }
-    transientDetectTime.stop();
-    detectTime.stop();
-    upload.print("upload");
-    add.print("add");
-    divide.print("divide");
-    imageProcessTime.print("image processing");
-    transientDetectTime.print("transient detection");
-    detectTime.print("function");
-    std::cout << std::endl;
+    // transientDetectTime.stop();
+    // detectTime.stop();
+    // upload.print("upload");
+    // add.print("add");
+    // divide.print("divide");
+    // imageProcessTime.print("image processing");
+    // transientDetectTime.print("transient detection");
+    // detectTime.print("function");
+    // std::cout << std::endl;
     return validDetectionSet;
 }
 

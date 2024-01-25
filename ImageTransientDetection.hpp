@@ -18,6 +18,12 @@ class ImageTransientDetection
     public:
         ImageTransientDetection()
         {
+            this->numberOfFramesInAverageFrame = 50;
+            this->threshold = 1000;
+            this->minimumSize = 1;
+            this->maximumSize = 1000;
+            this->newAverageFrameCallback = NULL;
+            this->detectionEnabled = true;
         }
 
         ImageTransientDetection(
@@ -49,22 +55,25 @@ class ImageTransientDetection
         void getAverageFrame(cv::Mat &buffer);
     private:
         cv::Mat lastRawFrame;
+
         cv::Mat lastDiffedFrame;
+
         cv::Mat lastThresholdedFrame;
 
         cv::Mat averageFrame;
+
         bool averageFrameSet = false;
         cv::Mat nextAverageFrame;
         uint32_t nextAverageFrameCount;
         
 
-        volatile uint32_t threshold = 1000;
-        volatile uint32_t minimumSize = 1;
-        volatile uint32_t maximumSize = 100;
-        volatile uint32_t numberOfFramesInAverageFrame = 1;
+        volatile uint32_t threshold;
+        volatile uint32_t minimumSize;
+        volatile uint32_t maximumSize;
+        volatile uint32_t numberOfFramesInAverageFrame;
         std::function<void(cv::Mat)> newAverageFrameCallback;
 
-        volatile bool detectionEnabled = true;
+        volatile bool detectionEnabled;
 
         // Benchmark detectTime;
         // Benchmark imageProcessTime;
@@ -144,7 +153,7 @@ bool ImageTransientDetection::detect(
     }
 
     this->lastRawFrame = frame.clone();
-    
+
     cv::add(
             this->nextAverageFrame, 
             frame, 
@@ -154,9 +163,9 @@ bool ImageTransientDetection::detect(
     if(this->nextAverageFrameCount >= numberOfFramesInAverageFrame)
     {
         this->nextAverageFrameCount = 0;
-        this->averageFrame = 
-            cv::Mat::zeros(frame.size(), frame.type()); 
+
         this->averageFrame = this->nextAverageFrame.clone();
+
         this->nextAverageFrame = 
             cv::Mat::zeros(frame.size(), frame.type());        
 
@@ -171,35 +180,24 @@ bool ImageTransientDetection::detect(
     if(!this->averageFrame.empty())
     {
         /* This is the actual detection */
-        cv::Mat subtractedFrame;
-        cv::Mat thresholdFrame;
 
         double minValue; 
         double maxValue;
-        
-        cv::subtract(frame, this->averageFrame, subtractedFrame);
-        this->lastDiffedFrame = subtractedFrame.clone();
+        cv::subtract(frame, this->averageFrame, this->lastDiffedFrame);
 
         cv::minMaxLoc(
-            subtractedFrame, 
+            this->lastDiffedFrame, 
             &minValue, 
             &maxValue);
+
         cv::threshold(
-            subtractedFrame, 
-            thresholdFrame, 
+            this->lastDiffedFrame, 
+            this->lastThresholdedFrame, 
             this->threshold, 
             maxValue,
             cv::THRESH_BINARY);
-        this->lastThresholdedFrame = thresholdFrame.clone();
 
-        /* If detection is not enabled, just return false now...*/
-        if(false == this->detectionEnabled)
-        {
-            return false;
-        }
-
-        thresholdFrame.convertTo(thresholdFrame, CV_8U);
-
+        this->lastThresholdedFrame.convertTo(this->lastThresholdedFrame, CV_8U);
         
         int num_labels;
         cv::Mat labels;
@@ -207,7 +205,7 @@ bool ImageTransientDetection::detect(
         cv::Mat centroids;
         num_labels = 
             cv::connectedComponentsWithStats(
-                thresholdFrame, 
+                this->lastThresholdedFrame, 
                 labels, 
                 stats, 
                 centroids, 
@@ -229,26 +227,23 @@ bool ImageTransientDetection::detect(
             }
             else if(true == validDetectionSet)
             {
-                std::cout << "Multiple detections in single image found" << std::endl;
-                std::cout << "Try adjusting number of frames in average " <<
-                "frame, " << "threshold, minimum size, or maximum size" << std::endl;
+                // std::cout << "Multiple detections in single image found" << std::endl;
+                // std::cout << "Try adjusting number of frames in average " <<
+                // "frame, " << "threshold, minimum size, or maximum size" << std::endl;
+                // validDetectionSet = false;
+                break;
             }
             else
             {
                 validDetectionSet = true;
 
-                int centerX = stats.at<int>(i, cv::CC_STAT_LEFT) + stats.at<int>(i, cv::CC_STAT_WIDTH) / 2;
-                int centerY = stats.at<int>(i, cv::CC_STAT_TOP) + stats.at<int>(i, cv::CC_STAT_HEIGHT) / 2;
-                int newX = centerX - 100 / 2;
-                int newY = centerY - 100 / 2;
-
                 detectionBox = cv::Rect(
-                    newX, 
-                    newY,
-                    100,
-                    100);
+                    stats.at<int>(i, cv::CC_STAT_LEFT), 
+                    stats.at<int>(i, cv::CC_STAT_TOP),
+                    stats.at<int>(i, cv::CC_STAT_WIDTH),
+                    stats.at<int>(i, cv::CC_STAT_HEIGHT));
                 detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
-                detectionFrame = frame(detectionBox);
+                detectionFrame = frame(detectionBox).clone();
             }
         }
     }

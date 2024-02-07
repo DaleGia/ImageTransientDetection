@@ -18,11 +18,10 @@ class ImageTransientDetection
     public:
         ImageTransientDetection()
         {
-            this->numberOfFramesInAverageFrame = 50;
+            this->numberOfFramesInStack = 1;
             this->threshold = 1000;
             this->minimumSize = 1;
             this->maximumSize = 1000;
-            this->newAverageFrameCallback = NULL;
             this->detectionEnabled = true;
         }
 
@@ -30,14 +29,13 @@ class ImageTransientDetection
             uint16_t threshold,
             uint32_t minimumSize,
             uint32_t maximumSize,
-            uint32_t averageFrameNumber = 1,
-            std::function<void(cv::Mat)> averageFrameCallback = nullptr);
+            uint32_t stackedFrameNumber = 1);
         
-        void setNumberOfAverageFrames(uint32_t frames);
+        void setNumberOfFramesInStack(uint32_t frames);
+        void setNumberOfStrackedDetectionFrames(uint32_t frames);
         void setThreshold(uint32_t threshold);
         void setMinimumSize(uint32_t size);
         void setMaximumSize(uint32_t size);
-        void setNewAverageFrameCallback(std::function<void(cv::Mat)> callback);
 
         void disableDetection(void);
         void enableDetection(void);
@@ -50,30 +48,30 @@ class ImageTransientDetection
             uint32_t &detectionSize);
 
         void getLastRawFrame(cv::Mat &buffer);
+        void getLastStackedFrame(cv::Mat &buffer);
         void getLastDiffedFrame(cv::Mat &buffer);
         void getLastThresholdedFrame(cv::Mat &buffer);
-        void getAverageFrame(cv::Mat &buffer);
     private:
         cv::Mat lastRawFrame;
 
-        cv::Mat lastDiffedFrame;
+        cv::Mat lastDiffedStackedFrame;
 
-        cv::Mat lastThresholdedFrame;
+        cv::Mat lastThresholdedStackedFrame;
 
-        cv::Mat averageFrame;
+        cv::Mat stackedFrameA;
+        cv::Mat stackedFrameB;
 
-        bool averageFrameSet = false;
-        cv::Mat nextAverageFrame;
-        uint32_t nextAverageFrameCount;
+        bool stackedFramesSet = false;
         
 
         volatile uint32_t threshold;
         volatile uint32_t minimumSize;
         volatile uint32_t maximumSize;
-        volatile uint32_t numberOfFramesInAverageFrame;
-        std::function<void(cv::Mat)> newAverageFrameCallback;
-
+        volatile uint32_t numberOfFramesInStack;
         volatile bool detectionEnabled;
+
+        uint32_t stackInProgressCount = 0;
+        uint32_t stackCompleteCount = 0;
 
         // Benchmark detectTime;
         // Benchmark imageProcessTime;
@@ -84,19 +82,17 @@ ImageTransientDetection::ImageTransientDetection(
     uint16_t threshold,
     uint32_t minimumSize,
     uint32_t maximumSize,
-    uint32_t averageFrameNumber,
-    std::function<void(cv::Mat)> averageFrameCallback)
+    uint32_t stackedFrameNumber)
 {
-    this->numberOfFramesInAverageFrame = averageFrameNumber;
+    this->numberOfFramesInStack = stackedFrameNumber;
     this->threshold = threshold;
     this->minimumSize = minimumSize;
-    this->maximumSize = maximumSize;
-    this->newAverageFrameCallback = averageFrameCallback;
+    this->maximumSize = maximumSize;    
 }
 
-void ImageTransientDetection::setNumberOfAverageFrames(uint32_t frames)
+void ImageTransientDetection::setNumberOfFramesInStack(uint32_t frames)
 {
-    this->numberOfFramesInAverageFrame = frames;
+    this->numberOfFramesInStack = frames;
 }
 
 void ImageTransientDetection::setThreshold(uint32_t threshold)
@@ -114,25 +110,19 @@ void ImageTransientDetection::setMaximumSize(uint32_t size)
     this->maximumSize = size;
 }
 
-void ImageTransientDetection::setNewAverageFrameCallback(
-    std::function<void(cv::Mat)> callback)
-{
-    this->newAverageFrameCallback = callback;
-}
-
 void ImageTransientDetection::disableDetection(void)
 {
-    detectionEnabled = false;
+    this->detectionEnabled = false;
 }
 
 void ImageTransientDetection::enableDetection(void)
 {
-    detectionEnabled = true;
+    this->detectionEnabled = true;
 }
 
 bool ImageTransientDetection::isDetectionEnabled(void)
 {
-    return detectionEnabled;
+    return this->detectionEnabled;
 }
 
 bool ImageTransientDetection::detect(
@@ -146,58 +136,63 @@ bool ImageTransientDetection::detect(
 
     bool validDetectionSet = false;
 
-    if(this->nextAverageFrame.empty())
+    if(this->stackedFrameA.empty())
     {
-        this->nextAverageFrame = 
-                cv::Mat::zeros(frame.size(), frame.type());
+        this->stackedFrameA = 
+                cv::Mat::zeros(frame.size(), CV_32F);
     }
 
-    this->lastRawFrame = frame.clone();
-
-    cv::add(
-            this->nextAverageFrame, 
-            frame, 
-            this->nextAverageFrame);
-    this->nextAverageFrame /= 2;
-    this->nextAverageFrameCount++;
-    if(this->nextAverageFrameCount >= numberOfFramesInAverageFrame)
+    if(this->stackedFrameB.empty())
     {
-        this->nextAverageFrameCount = 0;
-
-        this->averageFrame = this->nextAverageFrame.clone();
-
-        this->nextAverageFrame = 
-            cv::Mat::zeros(frame.size(), frame.type());        
-
-        if(nullptr != this->newAverageFrameCallback)
+        this->stackedFrameB = 
+                cv::Mat::zeros(frame.size(), CV_32F);
+    }
+    
+    frame.convertTo(this->lastRawFrame, CV_32F);
+    cv::accumulate(frame, this->stackedFrameB);
+    this->stackInProgressCount++;
+    if(this->stackInProgressCount >= this->numberOfFramesInStack)
+    {
+        /* This means we are ready to do the diffing here*/
+    
+        /* Now that the diffing has been done we can get ready to build the
+         next stack*/
+        this->stackInProgressCount = 0;
+        this->stackedFrameA = this->stackedFrameB.clone();
+        this->stackedFrameB = 
+            cv::Mat::zeros(frame.size(), CV_32F);
+        stackCompleteCount++;
+        if(1 < stackCompleteCount)   
         {
-            this->newAverageFrameCallback(this->averageFrame.clone());
-        }    
+            this->stackedFramesSet = true;      
+        } 
     }
 
     // imageProcessTime.stop();
     // transientDetectTime.start();
-    if(!this->averageFrame.empty())
+    if(true == this->stackedFramesSet)
     {
         /* This is the actual detection */
 
         double minValue; 
         double maxValue;
-        cv::subtract(frame, this->averageFrame, this->lastDiffedFrame);
-
+        
+        /* subtract the accumulated frame from the raw frame */
+        cv::absdiff(this->stackedFrameA, this->stackedFrameB, this->lastDiffedStackedFrame);
+        
         cv::minMaxLoc(
-            this->lastDiffedFrame, 
+            this->lastDiffedStackedFrame, 
             &minValue, 
             &maxValue);
 
         cv::threshold(
-            this->lastDiffedFrame, 
-            this->lastThresholdedFrame, 
+            this->lastDiffedStackedFrame, 
+            this->lastThresholdedStackedFrame, 
             this->threshold, 
             maxValue,
             cv::THRESH_BINARY);
 
-        this->lastThresholdedFrame.convertTo(this->lastThresholdedFrame, CV_8U);
+        this->lastThresholdedStackedFrame.convertTo(this->lastThresholdedStackedFrame, CV_8U);
         
         int num_labels;
         cv::Mat labels;
@@ -205,7 +200,7 @@ bool ImageTransientDetection::detect(
         cv::Mat centroids;
         num_labels = 
             cv::connectedComponentsWithStats(
-                this->lastThresholdedFrame, 
+                this->lastThresholdedStackedFrame, 
                 labels, 
                 stats, 
                 centroids, 
@@ -263,15 +258,15 @@ void ImageTransientDetection::getLastRawFrame(cv::Mat &buffer)
 
 void ImageTransientDetection::getLastDiffedFrame(cv::Mat &buffer)
 {
-    buffer = this->lastDiffedFrame.clone();
+    buffer = this->lastDiffedStackedFrame.clone();
 }
 
 void ImageTransientDetection::getLastThresholdedFrame(cv::Mat &buffer)
 {
-    buffer = this->lastThresholdedFrame.clone();
+    buffer = this->lastThresholdedStackedFrame.clone();
 }
 
-void ImageTransientDetection::getAverageFrame(cv::Mat &buffer)
+void ImageTransientDetection::getLastStackedFrame(cv::Mat &buffer)
 {
-    buffer = this->averageFrame.clone();
+    buffer = this->stackedFrameA.clone();
 }

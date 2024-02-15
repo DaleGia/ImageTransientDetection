@@ -9,91 +9,37 @@
 #include <iostream>
 #include <vector>
 #include <opencv2/opencv.hpp>
-#include "Benchmark.hpp"
-
-
+#include "ImagePreviewWindow.hpp"
 
 class ImageTransientDetection
 {
     public:
-        ImageTransientDetection()
-        {
-            this->numberOfFramesInStack = 1;
-            this->threshold = 1000;
-            this->minimumSize = 1;
-            this->maximumSize = 1000;
-            this->detectionEnabled = true;
-        }
+        ImageTransientDetection(){};
 
-        ImageTransientDetection(
-            uint16_t threshold,
-            uint32_t minimumSize,
-            uint32_t maximumSize,
-            uint32_t stackedFrameNumber = 1);
-        
-        void setNumberOfFramesInStack(uint32_t frames);
-        void setNumberOfStrackedDetectionFrames(uint32_t frames);
         void setThreshold(uint32_t threshold);
         void setMinimumSize(uint32_t size);
         void setMaximumSize(uint32_t size);
-
-        void disableDetection(void);
-        void enableDetection(void);
-        bool isDetectionEnabled(void);
+        void setDialationSize(uint32_t size);
 
         bool detect(
-            cv::Mat &frame,
-            cv::Mat &detectionFrame,
+            cv::Mat &frameA,
+            cv::Mat &frameB,
             cv::Rect &detectionBox,
+            cv::Point &detectionCentroid,    
             uint32_t &detectionSize);
 
-        void getLastRawFrame(cv::Mat &buffer);
-        void getLastStackedFrame(cv::Mat &buffer);
         void getLastDiffedFrame(cv::Mat &buffer);
         void getLastThresholdedFrame(cv::Mat &buffer);
     private:
-        cv::Mat lastRawFrame;
-
-        cv::Mat lastDiffedStackedFrame;
-
-        cv::Mat lastThresholdedStackedFrame;
-
-        cv::Mat stackedFrameA;
-        cv::Mat stackedFrameB;
-
-        bool stackedFramesSet = false;
-        
+        cv::Mat lastDiffedFrame;
+        cv::Mat lastThresholdedFrame;
+        cv::Mat dialationKernal;
 
         volatile uint32_t threshold;
         volatile uint32_t minimumSize;
         volatile uint32_t maximumSize;
-        volatile uint32_t numberOfFramesInStack;
-        volatile bool detectionEnabled;
-
-        uint32_t stackInProgressCount = 0;
-        uint32_t stackCompleteCount = 0;
-
-        // Benchmark detectTime;
-        // Benchmark imageProcessTime;
-        // Benchmark transientDetectTime;
+        volatile uint32_t dialationSize;
 };
-
-ImageTransientDetection::ImageTransientDetection(
-    uint16_t threshold,
-    uint32_t minimumSize,
-    uint32_t maximumSize,
-    uint32_t stackedFrameNumber)
-{
-    this->numberOfFramesInStack = stackedFrameNumber;
-    this->threshold = threshold;
-    this->minimumSize = minimumSize;
-    this->maximumSize = maximumSize;    
-}
-
-void ImageTransientDetection::setNumberOfFramesInStack(uint32_t frames)
-{
-    this->numberOfFramesInStack = frames;
-}
 
 void ImageTransientDetection::setThreshold(uint32_t threshold)
 {
@@ -110,163 +56,129 @@ void ImageTransientDetection::setMaximumSize(uint32_t size)
     this->maximumSize = size;
 }
 
-void ImageTransientDetection::disableDetection(void)
+void ImageTransientDetection::setDialationSize(uint32_t dialationSize)
 {
-    this->detectionEnabled = false;
+    this->dialationSize = dialationSize;
+    this->dialationKernal = 
+        cv::getStructuringElement(
+            cv::MORPH_ELLIPSE, 
+            cv::Size(2 * this->dialationSize + 1, 2 * this->dialationSize + 1));
 }
 
-void ImageTransientDetection::enableDetection(void)
-{
-    this->detectionEnabled = true;
-}
-
-bool ImageTransientDetection::isDetectionEnabled(void)
-{
-    return this->detectionEnabled;
-}
-
+/**
+ * @brief 
+ * Diffs two images, applies a threshold then detects if any blobs of pixels exist
+ * between the minimum and maxiumum defined sizes. YOU MUST NORMALISE IMAGES
+ * BEFORE CALLING THIS FUCTION.
+ * 
+ * @param frameA 
+ * @param frameB 
+ * @param detectionBox 
+ * @param detectionCentroid 
+ * @param detectionSize 
+ * @return true 
+ * @return false 
+ */
 bool ImageTransientDetection::detect(
-    cv::Mat &frame,
-    cv::Mat &detectionFrame,
+    cv::Mat &frameA,
+    cv::Mat &frameB,
     cv::Rect &detectionBox,
+    cv::Point &detectionCentroid,    
     uint32_t &detectionSize)
 {
     // detectTime.start();
     // imageProcessTime.start();
 
-    bool validDetectionSet = false;
+    bool validDetectionSet;
+    double minValue; 
+    double maxValue;
+    int num_labels;
+    cv::Mat labels;
+    cv::Mat stats;
+    cv::Mat centroids;
 
-    if(this->stackedFrameA.empty())
+    validDetectionSet = false;
+
+    if(true == this->lastDiffedFrame.empty())
     {
-        this->stackedFrameA = 
-                cv::Mat::zeros(frame.size(), CV_32F);
+        this->lastDiffedFrame = cv::Mat::zeros(frameA.size(), frameA.type());
     }
 
-    if(this->stackedFrameB.empty())
-    {
-        this->stackedFrameB = 
-                cv::Mat::zeros(frame.size(), CV_32F);
-    }
+    /* diff the two frames */
+    cv::absdiff(frameA, frameB, this->lastDiffedFrame);
+    cv::minMaxLoc(
+        this->lastDiffedFrame, 
+        &minValue, 
+        &maxValue);
+
+    cv::threshold(
+        this->lastDiffedFrame, 
+        this->lastThresholdedFrame, 
+        this->threshold, 
+        maxValue,
+        cv::THRESH_BINARY);
+
+    // cv::dilate(
+    //     this->lastThresholdedFrame, 
+    //     this->lastThresholdedFrame, 
+    //     this->dialationKernal);
+
+    this->lastThresholdedFrame.convertTo(this->lastThresholdedFrame, CV_8U);
     
-    frame.convertTo(this->lastRawFrame, CV_32F);
-    cv::accumulate(frame, this->stackedFrameB);
-    this->stackInProgressCount++;
-    if(this->stackInProgressCount >= this->numberOfFramesInStack)
+    num_labels = 
+        cv::connectedComponentsWithStats(
+            this->lastThresholdedFrame, 
+            labels, 
+            stats, 
+            centroids, 
+            4, 
+            CV_32S);
+
+    for(int i = 1; i < num_labels; ++i) 
     {
-        /* This means we are ready to do the diffing here*/
-    
-        /* Now that the diffing has been done we can get ready to build the
-         next stack*/
-        this->stackInProgressCount = 0;
-        this->stackedFrameA = this->stackedFrameB.clone();
-        this->stackedFrameB = 
-            cv::Mat::zeros(frame.size(), CV_32F);
-        stackCompleteCount++;
-        if(1 < stackCompleteCount)   
+        double x, y;
+        cv::Point w, h;            
+
+        if(stats.at<int>(i, cv::CC_STAT_AREA) < this->minimumSize) 
         {
-            this->stackedFramesSet = true;      
-        } 
-    }
-
-    // imageProcessTime.stop();
-    // transientDetectTime.start();
-    if(true == this->stackedFramesSet)
-    {
-        /* This is the actual detection */
-
-        double minValue; 
-        double maxValue;
-        
-        /* subtract the accumulated frame from the raw frame */
-        cv::absdiff(this->stackedFrameA, this->stackedFrameB, this->lastDiffedStackedFrame);
-        
-        cv::minMaxLoc(
-            this->lastDiffedStackedFrame, 
-            &minValue, 
-            &maxValue);
-
-        cv::threshold(
-            this->lastDiffedStackedFrame, 
-            this->lastThresholdedStackedFrame, 
-            this->threshold, 
-            maxValue,
-            cv::THRESH_BINARY);
-
-        this->lastThresholdedStackedFrame.convertTo(this->lastThresholdedStackedFrame, CV_8U);
-        
-        int num_labels;
-        cv::Mat labels;
-        cv::Mat stats;
-        cv::Mat centroids;
-        num_labels = 
-            cv::connectedComponentsWithStats(
-                this->lastThresholdedStackedFrame, 
-                labels, 
-                stats, 
-                centroids, 
-                4, 
-                CV_32S);
-
-        for(int i = 1; i < num_labels; ++i) 
+            // Not a valid detection. Too small
+        }
+        else if(stats.at<int>(i, cv::CC_STAT_AREA) > this->maximumSize) 
         {
-            double x, y;
-            cv::Point w, h;            
+            // Not a valid detection. Too big
+        }
+        else
+        {
+            /* For the detection bounding box */
+            detectionBox = cv::Rect(
+                stats.at<int>(i, cv::CC_STAT_LEFT), 
+                stats.at<int>(i, cv::CC_STAT_TOP),
+                stats.at<int>(i, cv::CC_STAT_WIDTH),
+                stats.at<int>(i, cv::CC_STAT_HEIGHT));
 
-            if(stats.at<int>(i, cv::CC_STAT_AREA) < this->minimumSize) 
-            {
-                // Not a valid detection. Too small
-            }
-            else if(stats.at<int>(i, cv::CC_STAT_AREA) > this->maximumSize) 
-            {
-                // Not a valid detection. Too big
-            }
-            else if(true == validDetectionSet)
-            {
-                // std::cout << "Multiple detections in single image found" << std::endl;
-                // std::cout << "Try adjusting number of frames in average " <<
-                // "frame, " << "threshold, minimum size, or maximum size" << std::endl;
-                // validDetectionSet = false;
-                break;
-            }
-            else
-            {
-                validDetectionSet = true;
+            /* For the detection centroid */
+            double x = centroids.at<double>(i, 0);
+            double y = centroids.at<double>(i, 1);
+            int roundedX = static_cast<int>(std::round(x));
+            int roundedY = static_cast<int>(std::round(y));
+            detectionCentroid = cv::Point(roundedX, roundedY);
+            
+            /* For the detection size */
+            detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
 
-                detectionBox = cv::Rect(
-                    stats.at<int>(i, cv::CC_STAT_LEFT), 
-                    stats.at<int>(i, cv::CC_STAT_TOP),
-                    stats.at<int>(i, cv::CC_STAT_WIDTH),
-                    stats.at<int>(i, cv::CC_STAT_HEIGHT));
-                detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
-                detectionFrame = frame(detectionBox).clone();
-            }
+            validDetectionSet = true;
         }
     }
-    // transientDetectTime.stop();
-    // detectTime.stop();
-    // imageProcessTime.print("image processing");
-    // transientDetectTime.print("transient detection");
-    // detectTime.print("function");
-    // std::cout << std::endl;
-    return validDetectionSet;
-}
 
-void ImageTransientDetection::getLastRawFrame(cv::Mat &buffer)
-{
-    buffer = this->lastRawFrame.clone();
+    return validDetectionSet;
 }
 
 void ImageTransientDetection::getLastDiffedFrame(cv::Mat &buffer)
 {
-    buffer = this->lastDiffedStackedFrame.clone();
+    buffer = this->lastDiffedFrame.clone();
 }
 
 void ImageTransientDetection::getLastThresholdedFrame(cv::Mat &buffer)
 {
-    buffer = this->lastThresholdedStackedFrame.clone();
-}
-
-void ImageTransientDetection::getLastStackedFrame(cv::Mat &buffer)
-{
-    buffer = this->stackedFrameA.clone();
+    buffer = this->lastThresholdedFrame.clone();
 }

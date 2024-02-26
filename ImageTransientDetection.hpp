@@ -17,9 +17,10 @@ class ImageTransientDetection
         ImageTransientDetection(){};
 
         void setThreshold(uint32_t threshold);
+        void setThresholdBlockSize(uint32_t threshold);
+        void setBlurKernalSize(uint32_t size);
         void setMinimumSize(uint32_t size);
         void setMaximumSize(uint32_t size);
-        void setDialationSize(uint32_t size);
 
         bool detect(
             cv::Mat &frameA,
@@ -33,9 +34,10 @@ class ImageTransientDetection
     private:
         cv::Mat lastDiffedFrame;
         cv::Mat lastThresholdedFrame;
-        cv::Mat dialationKernal;
 
-        volatile uint32_t threshold;
+        volatile uint32_t thresholdBlockSize = 10;
+        volatile uint32_t threshold = 2;
+        volatile uint32_t blurKernalSize = 5;
         volatile uint32_t minimumSize;
         volatile uint32_t maximumSize;
         volatile uint32_t dialationSize;
@@ -46,6 +48,16 @@ void ImageTransientDetection::setThreshold(uint32_t threshold)
     this->threshold = threshold;
 }
 
+void ImageTransientDetection::setThresholdBlockSize(uint32_t threshold)
+{
+    this->thresholdBlockSize = threshold;
+}
+
+void ImageTransientDetection::setBlurKernalSize(uint32_t size)
+{
+    this->blurKernalSize = size;
+}
+
 void ImageTransientDetection::setMinimumSize(uint32_t size)
 {
     this->minimumSize = size;
@@ -54,15 +66,6 @@ void ImageTransientDetection::setMinimumSize(uint32_t size)
 void ImageTransientDetection::setMaximumSize(uint32_t size)
 {
     this->maximumSize = size;
-}
-
-void ImageTransientDetection::setDialationSize(uint32_t dialationSize)
-{
-    this->dialationSize = dialationSize;
-    this->dialationKernal = 
-        cv::getStructuringElement(
-            cv::MORPH_ELLIPSE, 
-            cv::Size(2 * this->dialationSize + 1, 2 * this->dialationSize + 1));
 }
 
 /**
@@ -92,10 +95,13 @@ bool ImageTransientDetection::detect(
     bool validDetectionSet;
     double minValue; 
     double maxValue;
-    int num_labels;
-    cv::Mat labels;
-    cv::Mat stats;
-    cv::Mat centroids;
+    // int num_labels;
+    // cv::Mat labels;
+    // cv::Mat stats;
+    // cv::Mat centroids;
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<cv::Vec4i> hierarchy;
+    std::vector<cv::Moments> moments;
 
     validDetectionSet = false;
 
@@ -106,69 +112,132 @@ bool ImageTransientDetection::detect(
 
     /* diff the two frames */
     cv::absdiff(frameA, frameB, this->lastDiffedFrame);
-    cv::minMaxLoc(
-        this->lastDiffedFrame, 
-        &minValue, 
-        &maxValue);
 
-    cv::threshold(
-        this->lastDiffedFrame, 
-        this->lastThresholdedFrame, 
-        this->threshold, 
-        maxValue,
-        cv::THRESH_BINARY);
-
-    // cv::dilate(
-    //     this->lastThresholdedFrame, 
-    //     this->lastThresholdedFrame, 
-    //     this->dialationKernal);
-
-    this->lastThresholdedFrame.convertTo(this->lastThresholdedFrame, CV_8U);
+    // try
+    // {
+    //     cv::medianBlur(
+    //         this->lastDiffedFrame, 
+    //         this->lastDiffedFrame, 
+    //         this->blurKernalSize);
+    // }
+    // catch(const std::exception& e)
+    // {
+    //     std::cerr << e.what() << '\n';
+    // }
     
-    num_labels = 
-        cv::connectedComponentsWithStats(
-            this->lastThresholdedFrame, 
-            labels, 
-            stats, 
-            centroids, 
-            4, 
-            CV_32S);
-
-    for(int i = 1; i < num_labels; ++i) 
+    cv::Mat diffed8bit;
+    this->lastDiffedFrame.convertTo(diffed8bit, CV_8U);
+    try
     {
-        double x, y;
-        cv::Point w, h;            
-
-        if(stats.at<int>(i, cv::CC_STAT_AREA) < this->minimumSize) 
+        cv::adaptiveThreshold(
+            diffed8bit,
+            this->lastThresholdedFrame, 
+            255, 
+            cv::ADAPTIVE_THRESH_GAUSSIAN_C, 
+            cv::THRESH_BINARY, 
+            this->thresholdBlockSize, 
+            this->threshold);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+    cv::findContours(
+        this->lastThresholdedFrame,
+        contours,
+        hierarchy,
+        cv::RETR_EXTERNAL,
+        cv::CHAIN_APPROX_SIMPLE);
+    for(int i = 1; i < contours.size(); i++)
+    {
+        if(cv::contourArea(contours[i]) < this->minimumSize) 
         {
             // Not a valid detection. Too small
         }
-        else if(stats.at<int>(i, cv::CC_STAT_AREA) > this->maximumSize) 
+        else if(cv::contourArea(contours[i]) > this->maximumSize) 
         {
             // Not a valid detection. Too big
         }
         else
         {
             /* For the detection bounding box */
-            detectionBox = cv::Rect(
-                stats.at<int>(i, cv::CC_STAT_LEFT), 
-                stats.at<int>(i, cv::CC_STAT_TOP),
-                stats.at<int>(i, cv::CC_STAT_WIDTH),
-                stats.at<int>(i, cv::CC_STAT_HEIGHT));
+            detectionBox = cv::boundingRect(contours[i]);
+            cv::Moments M = cv::moments(contours[i]);
+            detectionCentroid = cv::Point(M.m10/M.m00, M.m01/M.m00);
 
-            /* For the detection centroid */
-            double x = centroids.at<double>(i, 0);
-            double y = centroids.at<double>(i, 1);
-            int roundedX = static_cast<int>(std::round(x));
-            int roundedY = static_cast<int>(std::round(y));
-            detectionCentroid = cv::Point(roundedX, roundedY);
             
             /* For the detection size */
-            detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
+            float size;
+            cv::Point2f center;
 
+            cv::minEnclosingCircle(contours[i], center, size);
+
+            detectionSize = (uint32_t)(size*2.0);
             validDetectionSet = true;
+            break;
         }
     }
+
+
+// cv::minMaxLoc(
+    //     this->lastDiffedFrame, 
+    //     &minValue, 
+    //     &maxValue);
+
+    // cv::threshold(
+    //     this->lastDiffedFrame, 
+    //     this->lastThresholdedFrame, 
+    //     this->threshold, 
+    //     maxValue,
+    //     cv::THRESH_BINARY);
+ 
+    // this->lastThresholdedFrame.convertTo(this->lastThresholdedFrame, CV_8U);
+    
+    // num_labels = 
+    //     cv::connectedComponentsWithStats(
+    //         this->lastThresholdedFrame, 
+    //         labels, 
+    //         stats, 
+    //         centroids, 
+    //         4, 
+    //         CV_32S);
+
+    // for(int i = 1; i < num_labels; ++i) 
+    // {
+    //     double x, y;
+    //     cv::Point w, h;            
+
+    //     if(stats.at<int>(i, cv::CC_STAT_AREA) < this->minimumSize) 
+    //     {
+    //         // Not a valid detection. Too small
+    //     }
+    //     else if(stats.at<int>(i, cv::CC_STAT_AREA) > this->maximumSize) 
+    //     {
+    //         // Not a valid detection. Too big
+    //     }
+    //     else
+    //     {
+    //         /* For the detection bounding box */
+    //         detectionBox = cv::Rect(
+    //             stats.at<int>(i, cv::CC_STAT_LEFT), 
+    //             stats.at<int>(i, cv::CC_STAT_TOP),
+    //             stats.at<int>(i, cv::CC_STAT_WIDTH),
+    //             stats.at<int>(i, cv::CC_STAT_HEIGHT));
+
+    //         /* For the detection centroid */
+    //         double x = centroids.at<double>(i, 0);
+    //         double y = centroids.at<double>(i, 1);
+    //         int roundedX = static_cast<int>(std::round(x));
+    //         int roundedY = static_cast<int>(std::round(y));
+    //         detectionCentroid = cv::Point(roundedX, roundedY);
+            
+    //         /* For the detection size */
+    //         detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
+
+    //         validDetectionSet = true;
+    //     }
+    // }
 
     return validDetectionSet;
 }

@@ -17,14 +17,13 @@ class ImageTransientDetection
         ImageTransientDetection(){};
 
         void setThreshold(uint32_t threshold);
-        void setThresholdBlockSize(uint32_t threshold);
-        void setBlurKernalSize(uint32_t size);
         void setMinimumSize(uint32_t size);
         void setMaximumSize(uint32_t size);
 
         bool detect(
             cv::Mat &frameA,
             cv::Mat &frameB,
+            cv::Mat &mask,
             cv::Rect &detectionBox,
             cv::Point &detectionCentroid,    
             uint32_t &detectionSize);
@@ -35,27 +34,14 @@ class ImageTransientDetection
         cv::Mat lastDiffedFrame;
         cv::Mat lastThresholdedFrame;
 
-        volatile uint32_t thresholdBlockSize = 10;
         volatile uint32_t threshold = 2;
-        volatile uint32_t blurKernalSize = 5;
-        volatile uint32_t minimumSize;
-        volatile uint32_t maximumSize;
-        volatile uint32_t dialationSize;
+        volatile uint32_t minimumSize = 1;
+        volatile uint32_t maximumSize = 4294967295;
 };
 
 void ImageTransientDetection::setThreshold(uint32_t threshold)
 {
     this->threshold = threshold;
-}
-
-void ImageTransientDetection::setThresholdBlockSize(uint32_t threshold)
-{
-    this->thresholdBlockSize = threshold;
-}
-
-void ImageTransientDetection::setBlurKernalSize(uint32_t size)
-{
-    this->blurKernalSize = size;
 }
 
 void ImageTransientDetection::setMinimumSize(uint32_t size)
@@ -85,70 +71,55 @@ void ImageTransientDetection::setMaximumSize(uint32_t size)
 bool ImageTransientDetection::detect(
     cv::Mat &frameA,
     cv::Mat &frameB,
+    cv::Mat &mask,
     cv::Rect &detectionBox,
     cv::Point &detectionCentroid,    
     uint32_t &detectionSize)
 {
     // detectTime.start();
     // imageProcessTime.start();
-
+    cv::Mat maskedFrameA;
+    cv::Mat maskedFrameB;
     bool validDetectionSet;
     double minValue; 
     double maxValue;
-    // int num_labels;
-    // cv::Mat labels;
-    // cv::Mat stats;
-    // cv::Mat centroids;
+    cv::Scalar average;
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
     std::vector<cv::Moments> moments;
 
     validDetectionSet = false;
 
-    if(true == this->lastDiffedFrame.empty())
-    {
-        this->lastDiffedFrame = cv::Mat::zeros(frameA.size(), frameA.type());
-    }
+    this->lastDiffedFrame = cv::Mat::zeros(frameA.size(), frameA.type());
 
+    frameA.copyTo(maskedFrameA, mask);
+    frameB.copyTo(maskedFrameB, mask);
     /* diff the two frames */
-    cv::absdiff(frameA, frameB, this->lastDiffedFrame);
+    cv::absdiff(maskedFrameA, maskedFrameB, this->lastDiffedFrame);
+    average = cv::mean(this->lastDiffedFrame);
 
-    // try
-    // {
-    //     cv::medianBlur(
-    //         this->lastDiffedFrame, 
-    //         this->lastDiffedFrame, 
-    //         this->blurKernalSize);
-    // }
-    // catch(const std::exception& e)
-    // {
-    //     std::cerr << e.what() << '\n';
-    // }
-    
-    cv::Mat diffed8bit;
-    this->lastDiffedFrame.convertTo(diffed8bit, CV_8U);
     try
     {
-        cv::adaptiveThreshold(
-            diffed8bit,
-            this->lastThresholdedFrame, 
-            255, 
-            cv::ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv::THRESH_BINARY, 
-            this->thresholdBlockSize, 
-            this->threshold);
+        cv::threshold(
+            this->lastDiffedFrame,
+            this->lastThresholdedFrame,
+            average[0]*10,
+            255,
+            cv::THRESH_BINARY);
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
+        std::cerr << "Image Transient Detection thresholding error: " << e.what() << '\n';
     }
     
+
     cv::findContours(
         this->lastThresholdedFrame,
         contours,
         hierarchy,
         cv::RETR_EXTERNAL,
         cv::CHAIN_APPROX_SIMPLE);
+
     for(int i = 1; i < contours.size(); i++)
     {
         if(cv::contourArea(contours[i]) < this->minimumSize) 
@@ -165,7 +136,6 @@ bool ImageTransientDetection::detect(
             detectionBox = cv::boundingRect(contours[i]);
             cv::Moments M = cv::moments(contours[i]);
             detectionCentroid = cv::Point(M.m10/M.m00, M.m01/M.m00);
-
             
             /* For the detection size */
             float size;

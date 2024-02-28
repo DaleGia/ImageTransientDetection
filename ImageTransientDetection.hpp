@@ -16,7 +16,7 @@ class ImageTransientDetection
     public:
         ImageTransientDetection(){};
 
-        void setThreshold(uint32_t threshold);
+        // void setThreshold(uint32_t threshold);
         void setMinimumSize(uint32_t size);
         void setMaximumSize(uint32_t size);
 
@@ -34,15 +34,15 @@ class ImageTransientDetection
         cv::Mat lastDiffedFrame;
         cv::Mat lastThresholdedFrame;
 
-        volatile uint32_t threshold = 2;
+        // volatile uint32_t threshold = 2;
         volatile uint32_t minimumSize = 1;
         volatile uint32_t maximumSize = 4294967295;
 };
 
-void ImageTransientDetection::setThreshold(uint32_t threshold)
-{
-    this->threshold = threshold;
-}
+// void ImageTransientDetection::setThreshold(uint32_t threshold)
+// {
+//     this->threshold = threshold;
+// }
 
 void ImageTransientDetection::setMinimumSize(uint32_t size)
 {

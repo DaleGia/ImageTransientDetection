@@ -88,7 +88,7 @@ class ImagePreviewWindow
             }
 
             cv::imshow(name ,currentImage);
-            cv::waitKey(50);
+            cv::waitKey(1);
         }
 
     private:

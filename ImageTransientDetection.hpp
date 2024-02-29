@@ -16,14 +16,13 @@ class ImageTransientDetection
     public:
         ImageTransientDetection(){};
 
-        // void setThreshold(uint32_t threshold);
+        void setThreshold(uint32_t threshold);
         void setMinimumSize(uint32_t size);
         void setMaximumSize(uint32_t size);
 
         bool detect(
             cv::Mat &frameA,
             cv::Mat &frameB,
-            cv::Mat &mask,
             cv::Rect &detectionBox,
             cv::Point &detectionCentroid,    
             uint32_t &detectionSize);
@@ -34,15 +33,15 @@ class ImageTransientDetection
         cv::Mat lastDiffedFrame;
         cv::Mat lastThresholdedFrame;
 
-        // volatile uint32_t threshold = 2;
+        volatile uint32_t threshold = 2;
         volatile uint32_t minimumSize = 1;
         volatile uint32_t maximumSize = 4294967295;
 };
 
-// void ImageTransientDetection::setThreshold(uint32_t threshold)
-// {
-//     this->threshold = threshold;
-// }
+void ImageTransientDetection::setThreshold(uint32_t threshold)
+{
+    this->threshold = threshold;
+}
 
 void ImageTransientDetection::setMinimumSize(uint32_t size)
 {
@@ -71,7 +70,6 @@ void ImageTransientDetection::setMaximumSize(uint32_t size)
 bool ImageTransientDetection::detect(
     cv::Mat &frameA,
     cv::Mat &frameB,
-    cv::Mat &mask,
     cv::Rect &detectionBox,
     cv::Point &detectionCentroid,    
     uint32_t &detectionSize)
@@ -92,18 +90,15 @@ bool ImageTransientDetection::detect(
 
     this->lastDiffedFrame = cv::Mat::zeros(frameA.size(), frameA.type());
 
-    frameA.copyTo(maskedFrameA, mask);
-    frameB.copyTo(maskedFrameB, mask);
     /* diff the two frames */
-    cv::absdiff(maskedFrameA, maskedFrameB, this->lastDiffedFrame);
-    average = cv::mean(this->lastDiffedFrame);
+    cv::absdiff(frameA, frameB, this->lastDiffedFrame);
 
     try
     {
         cv::threshold(
             this->lastDiffedFrame,
             this->lastThresholdedFrame,
-            average[0]*10,
+            this->threshold,
             255,
             cv::THRESH_BINARY);
     }
@@ -112,7 +107,6 @@ bool ImageTransientDetection::detect(
         std::cerr << "Image Transient Detection thresholding error: " << e.what() << '\n';
     }
     
-
     cv::findContours(
         this->lastThresholdedFrame,
         contours,

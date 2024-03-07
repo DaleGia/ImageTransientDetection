@@ -107,13 +107,22 @@ bool ImageTransientDetection::detect(
         std::cerr << "Image Transient Detection thresholding error: " << e.what() << '\n';
     }
     
-    cv::findContours(
-        this->lastThresholdedFrame,
-        contours,
-        hierarchy,
-        cv::RETR_EXTERNAL,
-        cv::CHAIN_APPROX_SIMPLE);
-
+    try
+    {
+        cv::Mat tempthresh;
+        this->lastThresholdedFrame.convertTo(tempthresh, CV_8U, 1/255.0, 0);
+        cv::findContours(
+            tempthresh,
+            contours,
+            hierarchy,
+            cv::RETR_EXTERNAL,
+            cv::CHAIN_APPROX_SIMPLE);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << "findContours error: " << e.what() << '\n';
+    }
+    
     for(int i = 1; i < contours.size(); i++)
     {
         if(cv::contourArea(contours[i]) < this->minimumSize) 
@@ -142,66 +151,6 @@ bool ImageTransientDetection::detect(
             break;
         }
     }
-
-
-// cv::minMaxLoc(
-    //     this->lastDiffedFrame, 
-    //     &minValue, 
-    //     &maxValue);
-
-    // cv::threshold(
-    //     this->lastDiffedFrame, 
-    //     this->lastThresholdedFrame, 
-    //     this->threshold, 
-    //     maxValue,
-    //     cv::THRESH_BINARY);
- 
-    // this->lastThresholdedFrame.convertTo(this->lastThresholdedFrame, CV_8U);
-    
-    // num_labels = 
-    //     cv::connectedComponentsWithStats(
-    //         this->lastThresholdedFrame, 
-    //         labels, 
-    //         stats, 
-    //         centroids, 
-    //         4, 
-    //         CV_32S);
-
-    // for(int i = 1; i < num_labels; ++i) 
-    // {
-    //     double x, y;
-    //     cv::Point w, h;            
-
-    //     if(stats.at<int>(i, cv::CC_STAT_AREA) < this->minimumSize) 
-    //     {
-    //         // Not a valid detection. Too small
-    //     }
-    //     else if(stats.at<int>(i, cv::CC_STAT_AREA) > this->maximumSize) 
-    //     {
-    //         // Not a valid detection. Too big
-    //     }
-    //     else
-    //     {
-    //         /* For the detection bounding box */
-    //         detectionBox = cv::Rect(
-    //             stats.at<int>(i, cv::CC_STAT_LEFT), 
-    //             stats.at<int>(i, cv::CC_STAT_TOP),
-    //             stats.at<int>(i, cv::CC_STAT_WIDTH),
-    //             stats.at<int>(i, cv::CC_STAT_HEIGHT));
-
-    //         /* For the detection centroid */
-    //         double x = centroids.at<double>(i, 0);
-    //         double y = centroids.at<double>(i, 1);
-    //         int roundedX = static_cast<int>(std::round(x));
-    //         int roundedY = static_cast<int>(std::round(y));
-    //         detectionCentroid = cv::Point(roundedX, roundedY);
-            
-    //         /* For the detection size */
-    //         detectionSize = stats.at<int>(i, cv::CC_STAT_AREA);
-
-    //         validDetectionSet = true;
-    //     }
-    // }
 
     return validDetectionSet;
 }

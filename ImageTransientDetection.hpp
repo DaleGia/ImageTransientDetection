@@ -123,6 +123,8 @@ bool ImageTransientDetection::detect(
         std::cerr << "findContours error: " << e.what() << '\n';
     }
     
+    uint32_t largestContourArea = 0;
+    int largestContourIndex = 0;
     for(int i = 1; i < contours.size(); i++)
     {
         if(cv::contourArea(contours[i]) < this->minimumSize) 
@@ -133,23 +135,27 @@ bool ImageTransientDetection::detect(
         {
             // Not a valid detection. Too big
         }
-        else
+        else if(largestContourArea < cv::contourArea(contours[i]))
         {
-            /* For the detection bounding box */
-            detectionBox = cv::boundingRect(contours[i]);
-            cv::Moments M = cv::moments(contours[i]);
-            detectionCentroid = cv::Point(M.m10/M.m00, M.m01/M.m00);
-            
-            /* For the detection size */
-            float size;
-            cv::Point2f center;
-
-            cv::minEnclosingCircle(contours[i], center, size);
-
-            detectionSize = (uint32_t)(size*2.0);
+            largestContourIndex = i;
+            largestContourArea = cv::contourArea(contours[i]);
             validDetectionSet = true;
-            break;
         }
+    }
+    if(true == validDetectionSet)
+    {
+        /* For the detection bounding box */
+        detectionBox = cv::boundingRect(contours[largestContourIndex]);
+        cv::Moments M = cv::moments(contours[largestContourIndex]);
+        detectionCentroid = cv::Point(M.m10/M.m00, M.m01/M.m00);
+        
+        /* For the detection size */
+        float size;
+        cv::Point2f center;
+
+        cv::minEnclosingCircle(contours[largestContourIndex], center, size);
+
+        detectionSize = (uint32_t)(size*2.0);
     }
 
     return validDetectionSet;

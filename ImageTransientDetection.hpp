@@ -29,9 +29,11 @@ class ImageTransientDetection
 
         void getLastDiffedFrame(cv::Mat &buffer);
         void getLastThresholdedFrame(cv::Mat &buffer);
+        uint32_t getLastLargestContour();
     private:
         cv::Mat lastDiffedFrame;
         cv::Mat lastThresholdedFrame;
+        uint32_t lastLargestContour = 0;
 
         volatile uint32_t threshold = 2;
         volatile uint32_t minimumSize = 1;
@@ -91,8 +93,15 @@ bool ImageTransientDetection::detect(
     this->lastDiffedFrame = cv::Mat::zeros(frameA.size(), frameA.type());
 
     /* diff the two frames */
-    cv::absdiff(frameA, frameB, this->lastDiffedFrame);
-
+    try
+    {
+        cv::absdiff(frameA, frameB, this->lastDiffedFrame);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << "Image Transient Detection absdiff error: " << e.what() << '\n';
+    }
+    
     try
     {
         cv::threshold(
@@ -123,27 +132,45 @@ bool ImageTransientDetection::detect(
         std::cerr << "findContours error: " << e.what() << '\n';
     }
     
-    uint32_t largestContourArea = 0;
+    this->lastLargestContour = 0;
     int largestContourIndex = 0;
     for(int i = 1; i < contours.size(); i++)
     {
-        if(cv::contourArea(contours[i]) < this->minimumSize) 
-        {
-            // Not a valid detection. Too small
-        }
-        else if(cv::contourArea(contours[i]) > this->maximumSize) 
-        {
-            // Not a valid detection. Too big
-        }
-        else if(largestContourArea < cv::contourArea(contours[i]))
+        if(this->lastLargestContour < cv::contourArea(contours[i]))
         {
             largestContourIndex = i;
-            largestContourArea = cv::contourArea(contours[i]);
-            validDetectionSet = true;
+            this->lastLargestContour = cv::contourArea(contours[i]);
         }
     }
+
+    if(this->lastLargestContour < this->minimumSize) 
+    {
+        // Not a valid detection. Too small
+    }
+    else if(this->lastLargestContour > this->maximumSize) 
+    {
+        // Not a valid detection. Too big
+    }
+    else
+    {
+        validDetectionSet = true;
+    }
+
     if(true == validDetectionSet)
     {
+        try
+        {
+            cv::threshold(
+                this->lastDiffedFrame,
+                this->lastThresholdedFrame,
+                this->threshold,
+                255,
+                cv::THRESH_BINARY);
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << "Image Transient Detection thresholding error: " << e.what() << '\n';
+        }
         /* For the detection bounding box */
         detectionBox = cv::boundingRect(contours[largestContourIndex]);
         cv::Moments M = cv::moments(contours[largestContourIndex]);
@@ -169,4 +196,9 @@ void ImageTransientDetection::getLastDiffedFrame(cv::Mat &buffer)
 void ImageTransientDetection::getLastThresholdedFrame(cv::Mat &buffer)
 {
     buffer = this->lastThresholdedFrame.clone();
+}
+
+uint32_t ImageTransientDetection::getLastLargestContour()
+{
+    return this->lastLargestContour;
 }

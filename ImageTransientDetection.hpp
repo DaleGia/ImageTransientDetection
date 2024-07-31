@@ -1,3 +1,6 @@
+#ifndef IMAGETRANSIENTDETECTION_H_
+#define IMAGETRANSIENTDETECTION_H_
+
 /**
  * @file ImageTransientDetection.hpp
  * Copyright (c) 2023 Dale Giancono All rights reserved.
@@ -199,3 +202,5 @@ uint32_t ImageTransientDetection::getLastLargestContour()
 {
     return this->lastLargestContour;
 }
+
+#endif

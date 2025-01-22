@@ -12,195 +12,245 @@
 #include <iostream>
 #include <vector>
 #include <opencv2/opencv.hpp>
-#include "ImagePreviewWindow.hpp"
+#include <atomic>
 
 class ImageTransientDetection
 {
 public:
-    ImageTransientDetection(){};
+    ImageTransientDetection() {};
 
-    void setThreshold(uint32_t threshold);
+    void setSigma(uint8_t sigma);
     void setMinimumSize(uint32_t size);
     void setMaximumSize(uint32_t size);
 
-    bool detect(
-        cv::Mat &frameA,
-        cv::Mat &frameB,
-        double &x,
-        double &y,
-        double &radius);
+    uint32_t detect(
+        cv::Mat& frameA,
+        cv::Mat& frameB,
+        cv::Rect& detectionBox,
+        double& maxPixelValue);
 
-    void getLastDiffedFrame(cv::Mat &buffer);
-    void getLastThresholdedFrame(cv::Mat &buffer);
-    uint32_t getLastLargestContour();
+    struct LastImageStats
+    {
+        double absdiffMin;
+        double absdiffMax;
+        double absdiffMean;
+        double absdiffStdDev;;
+        double sigmaThreshold;
+        double numberOfContours;
+        double numberOfValidContours;
+    };
+
+    LastImageStats getLastImageStats() const;
 
 private:
-    cv::Mat lastDiffedFrame;
-    cv::Mat lastThresholdedFrame;
-    uint32_t lastLargestContour = 0;
-
-    uint32_t threshold = 2;
-    uint32_t minimumSize = 1;
-    uint32_t maximumSize = 4294967295;
+    std::atomic<double> absdiffMin;
+    std::atomic<double> absdiffMax;
+    std::atomic<double> absdiffMean;
+    std::atomic<double> absdiffStdDev;
+    std::atomic<double> sigmaThreshold;
+    std::atomic<double> numberOfContours;
+    std::atomic<double> numberOfValidContours;
+    std::atomic<uint32_t> sigma = 5;
+    std::atomic<uint32_t> minimumSize = 1;
+    std::atomic<uint32_t> maximumSize = 4294967295;
 };
 
-void ImageTransientDetection::setThreshold(uint32_t threshold)
+/**
+ * @brief
+ * Set the sigma value for transient detection.
+ *
+ * @param sigma
+ * The sigma value used to calculate the threshold for detecting transients.
+ * A higher sigma results in a higher threshold, making detection more selective.
+ */
+
+void ImageTransientDetection::setSigma(uint8_t sigma)
 {
-    this->threshold = threshold;
+    this->sigma = sigma;
 }
 
+/**
+ * @brief
+ * Set the minimum size of a transient object in terms of the number of pixels.
+ *
+ * @param size
+ * The minimum size of a transient object. Any contours with fewer pixels than
+ * this will be rejected.
+ */
 void ImageTransientDetection::setMinimumSize(uint32_t size)
 {
     this->minimumSize = size;
 }
 
+/**
+ * @brief
+ * Set the maximum size of a transient object in terms of the number of pixels.
+ *
+ * @param size
+ * The maximum size of a transient object in terms of the number of pixels.
+ */
 void ImageTransientDetection::setMaximumSize(uint32_t size)
 {
     this->maximumSize = size;
 }
 
+
 /**
  * @brief
- * Diffs two images, applies a threshold then detects if any blobs of pixels exist
- * between the minimum and maxiumum defined sizes. YOU MUST NORMALISE IMAGES
- * BEFORE CALLING THIS FUCTION.
+ * Detect transient objects in a pair of images.
+ *
+ * This function subtracts the two input images, calculates the absolute difference,
+ * and then applies a threshold to the result. It then finds contours in the
+ * thresholded image, and tests each contour to see if it is a valid transient
+ * object based on its area.
  *
  * @param frameA
+ * The first image in the pair.
  * @param frameB
+ * The second image in the pair.
  * @param detectionBox
- * @param detectionCentroid
- * @param detectionSize
- * @return true
- * @return false
+ * The bounding box of the transient object(s) (if any) in the pair of images.
+ * @param maxPixelValue
+ * The maximum pixel value of any transient object in the pair of images.
+ *
+ * @return
+ * The number of valid transient objects detected in the pair of images.
  */
-bool ImageTransientDetection::detect(
-    cv::Mat &frameA,
-    cv::Mat &frameB,
-    double &x,
-    double &y,
-    double &radius)
+uint32_t ImageTransientDetection::detect(
+    cv::Mat& frameA,
+    cv::Mat& frameB,
+    cv::Rect& detectionBox,
+    double& maxPixelValue)
 {
-    // detectTime.start();
-    // imageProcessTime.start();
-    cv::Mat maskedFrameA;
-    cv::Mat maskedFrameB;
-    bool validDetectionSet;
-    double minValue;
-    double maxValue;
-    cv::Scalar average;
+    cv::Mat absDiffFrame;
+    cv::Mat thresholdFrame;
+
     std::vector<std::vector<cv::Point>> contours;
+    std::vector<std::vector<cv::Point>> validContours;
     std::vector<cv::Vec4i> hierarchy;
-    std::vector<cv::Moments> moments;
 
-    validDetectionSet = false;
+    double min;
+    double max;
+    cv::Scalar mean;
+    cv::Scalar std;
+    double threshold;
 
-    this->lastDiffedFrame = cv::Mat::zeros(frameA.size(), frameA.type());
+    absDiffFrame = cv::Mat::zeros(frameA.size(), frameA.type());
 
     /* diff the two frames */
     try
     {
-        cv::absdiff(frameA, frameB, this->lastDiffedFrame);
+        cv::absdiff(frameA, frameB, absDiffFrame);
     }
-    catch (const std::exception &e)
+    catch (const std::exception& e)
     {
         std::cerr << "Image Transient Detection absdiff error: " << e.what() << '\n';
     }
 
     try
     {
+        cv::minMaxLoc(absDiffFrame, &min, &max);
+        cv::meanStdDev(absDiffFrame, mean, std);
+
+        threshold = mean[0] + (this->sigma * std[0]);
         cv::threshold(
-            this->lastDiffedFrame,
-            this->lastThresholdedFrame,
-            this->threshold,
+            absDiffFrame,
+            thresholdFrame,
+            threshold,
             255,
             cv::THRESH_BINARY);
+        thresholdFrame.convertTo(thresholdFrame, CV_8U);
+
     }
-    catch (const std::exception &e)
+    catch (const std::exception& e)
     {
         std::cerr << "Image Transient Detection thresholding error: " << e.what() << '\n';
     }
 
     try
     {
-        cv::Mat tempthresh;
-        this->lastThresholdedFrame.convertTo(tempthresh, CV_8U, 1 / 255.0, 0);
         cv::findContours(
-            tempthresh,
+            thresholdFrame,
             contours,
             hierarchy,
             cv::RETR_EXTERNAL,
             cv::CHAIN_APPROX_SIMPLE);
     }
-    catch (const std::exception &e)
+    catch (const std::exception& e)
     {
         std::cerr << "findContours error: " << e.what() << '\n';
     }
 
-    this->lastLargestContour = 0;
-    int largestContourIndex = 0;
-    for (int i = 1; i < contours.size(); i++)
+    this->numberOfContours = contours.size();
+    int minX = std::numeric_limits<int>::max();
+    int minY = std::numeric_limits<int>::max();
+    int maxX = std::numeric_limits<int>::min();
+    int maxY = std::numeric_limits<int>::min();
+    maxPixelValue = std::numeric_limits<double>::min();
+
+    for (auto& contour : contours)
     {
-        if (this->lastLargestContour < cv::contourArea(contours[i]))
+        double contourArea = cv::contourArea(contour);
+        if (contourArea >= this->minimumSize && contourArea <= this->maximumSize)
         {
-            largestContourIndex = i;
-            this->lastLargestContour = cv::contourArea(contours[i]);
+            validContours.push_back(contour);
+
+            for (const auto& point : contour)
+            {
+                minX = std::min(minX, point.x);
+                minY = std::min(minY, point.y);
+                maxX = std::max(maxX, point.x);
+                maxY = std::max(maxY, point.y);
+
+                /* This compares the maximum pixel value of this contour to
+                   the other contours */
+                cv::Rect boundingRect = cv::boundingRect(contour);
+                for (int y = boundingRect.y; y < boundingRect.y + boundingRect.height; y++)
+                {
+                    for (int x = boundingRect.x; x < boundingRect.x + boundingRect.width; x++)
+                    {
+                        if (frameA.at<double>(y, x) > maxPixelValue)
+                        {
+                            maxPixelValue = frameA.at<double>(y, x);
+                        }
+                    }
+                }
+            }
         }
-    }
-
-    if (this->lastLargestContour < this->minimumSize)
-    {
-        // Not a valid detection. Too small
-    }
-    else if (this->lastLargestContour > this->maximumSize)
-    {
-        // Not a valid detection. Too big
-    }
-    else
-    {
-        validDetectionSet = true;
-    }
-
-    if (true == validDetectionSet)
-    {
-        try
+        if (!validContours.empty())
         {
-            cv::threshold(
-                this->lastDiffedFrame,
-                this->lastThresholdedFrame,
-                this->threshold,
-                255,
-                cv::THRESH_BINARY);
-        }
-        catch (const std::exception &e)
-        {
-            std::cerr << "Image Transient Detection thresholding error: " << e.what() << '\n';
+            detectionBox = cv::Rect(minX, minY, maxX - minX, maxY - minY);
         }
 
-        /* For the detection size */
-        cv::Point2f centre;
-        float size;
-        cv::minEnclosingCircle(contours[largestContourIndex], centre, size);
-        x = centre.x;
-        y = centre.y;
-        radius = size;
+        this->absdiffMin.store(min, std::memory_order_relaxed);
+        this->absdiffMax.store(max, std::memory_order_relaxed);
+        this->absdiffMean.store(mean[0], std::memory_order_relaxed);
+        this->absdiffStdDev.store(std[0], std::memory_order_relaxed);
+        this->sigmaThreshold.store(threshold, std::memory_order_relaxed);
+        this->numberOfContours.store(contours.size(), std::memory_order_relaxed);
+        this->numberOfValidContours.store(validContours.size(), std::memory_order_relaxed);
+
+        return validContours.size();
     }
-
-    return validDetectionSet;
 }
 
-void ImageTransientDetection::getLastDiffedFrame(cv::Mat &buffer)
+/**
+ * @brief Gets the statistics of the last image that was processed.
+ *
+ * @return The statistics of the last image that was processed.
+ */
+ImageTransientDetection::LastImageStats ImageTransientDetection::getLastImageStats() const
 {
-    buffer = this->lastDiffedFrame.clone();
+    ImageTransientDetection::LastImageStats stats;
+    stats.absdiffMin = this->absdiffMin;
+    stats.absdiffMax = this->absdiffMax;
+    stats.absdiffMean = this->absdiffMean;
+    stats.absdiffStdDev = this->absdiffStdDev;
+    stats.sigmaThreshold = this->sigmaThreshold;
+    stats.numberOfContours = this->numberOfContours;
+    stats.numberOfValidContours = this->numberOfValidContours;
+    return stats;
 }
 
-void ImageTransientDetection::getLastThresholdedFrame(cv::Mat &buffer)
-{
-    buffer = this->lastThresholdedFrame.clone();
-}
-
-uint32_t ImageTransientDetection::getLastLargestContour()
-{
-    return this->lastLargestContour;
-}
 
 #endif

@@ -74,21 +74,6 @@ BrightObjectMasking::BrightObjectMasking()
 
 };
 
-void BrightObjectMasking::enableBrightMaskImageSaving(std::filesystem::path filepath)
-{
-    this->filepath.clear();
-    this->filepath = filepath;
-    if (true == std::filesystem::is_directory(filepath))
-    {
-        this->filepath.clear();
-        this->filepath = filepath;
-        this->saveImages = true;
-    }
-    else
-    {
-        std::cerr << "BrightObjectMasking filepath is not a valid directory path" << std::endl;
-    }
-}
 
 void BrightObjectMasking::disableBrightMaskImageSaving()
 {

@@ -29,7 +29,7 @@ public:
         cv::Rect& detectionBox,
         double& maxPixelValue);
 
-    struct LastImageStats
+    struct Stats
     {
         double absdiffMin;
         double absdiffMax;
@@ -40,7 +40,7 @@ public:
         double numberOfValidContours;
     };
 
-    LastImageStats getLastImageStats() const;
+    ImageTransientDetection::Stats getLastImageStats() const;
 
 private:
     std::atomic<double> absdiffMin;
@@ -239,9 +239,9 @@ uint32_t ImageTransientDetection::detect(
  *
  * @return The statistics of the last image that was processed.
  */
-ImageTransientDetection::LastImageStats ImageTransientDetection::getLastImageStats() const
+ImageTransientDetection::Stats ImageTransientDetection::getLastImageStats() const
 {
-    ImageTransientDetection::LastImageStats stats;
+    ImageTransientDetection::Stats stats;
     stats.absdiffMin = this->absdiffMin;
     stats.absdiffMax = this->absdiffMax;
     stats.absdiffMean = this->absdiffMean;

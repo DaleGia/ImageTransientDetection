@@ -1,10 +1,23 @@
 #include "ImageTransientDetection.hpp"
+#include "ImagePreviewWindow.hpp"
 
 ImageTransientDetection::ImageTransientDetection()
     : sigma(5),
       minimumSize(1),
       maximumSize(4294967295)
 {
+}
+
+void ImageTransientDetection::setDebugMode(bool debug)
+{
+    this->debug = debug;
+    if (true == this->debug)
+    {
+        ImagePreviewWindow thresholdWindow("threshold");
+        ImagePreviewWindow frameAWindow("frameA");
+        ImagePreviewWindow frameBWindow("frameB");
+        ImagePreviewWindow diffWindow("diff");
+    }
 }
 
 /**
@@ -84,6 +97,8 @@ uint32_t ImageTransientDetection::detect(
     double threshold;
 
     absDiffFrame = cv::Mat::zeros(frameA.size(), frameA.type());
+    detectionBox = cv::Rect();
+    maxPixelValue = 0.0;
 
     /* diff the two frames */
     try
@@ -133,16 +148,26 @@ uint32_t ImageTransientDetection::detect(
     int minY = std::numeric_limits<int>::max();
     int maxX = std::numeric_limits<int>::min();
     int maxY = std::numeric_limits<int>::min();
+    double largestContourRadius = 0.0;
+    cv::Point2f center;
+    float radius;
+
     maxPixelValue = std::numeric_limits<double>::min();
 
-    for (auto &contour : contours)
+    for (size_t i = 0; i < contours.size(); i++)
     {
-        double contourArea = cv::contourArea(contour);
-        if (contourArea >= this->minimumSize && contourArea <= this->maximumSize)
-        {
-            validContours.push_back(contour);
 
-            for (const auto &point : contour)
+        cv::minEnclosingCircle(contours[i], center, radius);
+        if (radius > largestContourRadius)
+        {
+            largestContourRadius = radius;
+        }
+
+        if (radius >= this->minimumSize && radius <= this->maximumSize)
+        {
+            validContours.push_back(contours[i]);
+
+            for (const auto &point : contours[i])
             {
                 minX = std::min(minX, point.x);
                 minY = std::min(minY, point.y);
@@ -151,7 +176,7 @@ uint32_t ImageTransientDetection::detect(
 
                 /* This compares the maximum pixel value of this contour to
                    the other contours */
-                cv::Rect boundingRect = cv::boundingRect(contour);
+                cv::Rect boundingRect = cv::boundingRect(contours[i]);
                 for (int y = boundingRect.y; y < boundingRect.y + boundingRect.height; y++)
                 {
                     for (int x = boundingRect.x; x < boundingRect.x + boundingRect.width; x++)
@@ -164,6 +189,7 @@ uint32_t ImageTransientDetection::detect(
                 }
             }
         }
+
         if (!validContours.empty())
         {
             detectionBox = cv::Rect(minX, minY, maxX - minX, maxY - minY);
@@ -176,10 +202,74 @@ uint32_t ImageTransientDetection::detect(
         this->sigmaThreshold = threshold;
         this->numberOfContours = contours.size();
         this->numberOfValidContours = validContours.size();
-        return validContours.size();
+        this->largestContour = largestContour;
     }
 
-    return 0;
+    if (true == this->debug)
+    {
+        ImagePreviewWindow thresholdWindow("threshold");
+        ImagePreviewWindow frameAWindow("frameA");
+        ImagePreviewWindow frameBWindow("frameB");
+        ImagePreviewWindow diffWindow("diff");
+
+        if (!detectionBox.empty())
+        {
+            double minVal, maxVal;
+            cv::minMaxLoc(frameA, &minVal, &maxVal);
+            frameA.convertTo(frameA, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+            cv::minMaxLoc(frameB, &minVal, &maxVal);
+            frameB.convertTo(frameB, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+            cv::minMaxLoc(absDiffFrame, &minVal, &maxVal);
+            absDiffFrame.convertTo(absDiffFrame, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+            cv::rectangle(
+                frameA,
+                detectionBox,
+                cv::Scalar(255, 255, 255),
+                2);
+            cv::rectangle(
+                frameA,
+                detectionBox,
+                cv::Scalar(255, 255, 255),
+                2);
+            cv::rectangle(
+                absDiffFrame,
+                detectionBox,
+                cv::Scalar(255, 255, 255),
+                2);
+            cv::rectangle(
+                thresholdFrame,
+                detectionBox,
+                cv::Scalar(255, 255, 255),
+                2);
+        }
+        thresholdWindow.setImage(thresholdFrame);
+        frameAWindow.setImageStreched(frameA, 1);
+        frameBWindow.setImageStreched(frameB, 1);
+        diffWindow.setImageStreched(absDiffFrame, 1);
+        cv::waitKey(1);
+
+        std::cout << std::left << std::setw(20) << "";
+        std::cout << std::left << std::setw(20) << "Minimum";
+        std::cout << std::left << std::setw(20) << "Maximum";
+        std::cout << std::left << std::setw(20) << "Mean";
+        std::cout << std::left << std::setw(20) << "STD";
+        std::cout << std::left << std::setw(20) << "Sigma";
+        std::cout << std::left << std::setw(20) << "Num of Contours";
+        std::cout << std::left << std::setw(20) << "Largest Contour";
+
+        std::cout << std::endl;
+        std::cout << std::left << std::setw(20) << "DIFF IMAGE";
+        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffMin;
+        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffMax;
+        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffMean;
+        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffStdDev;
+        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->sigmaThreshold;
+        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->numberOfContours;
+        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->largestContour;
+        std::cout << std::endl;
+    }
+
+    return validContours.size();
 }
 
 /**
@@ -197,5 +287,6 @@ ImageTransientDetection::Stats ImageTransientDetection::getLastImageStats() cons
     stats.sigmaThreshold = this->sigmaThreshold;
     stats.numberOfContours = this->numberOfContours;
     stats.numberOfValidContours = this->numberOfValidContours;
+    stats.largestContour = this->largestContour;
     return stats;
 }

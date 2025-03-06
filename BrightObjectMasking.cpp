@@ -1,6 +1,5 @@
 #include "BrightObjectMasking.hpp"
 
-/*************  ✨ Codeium Command ⭐  *************/
 /**
  * @brief
  * Default constructor for BrightObjectMasking.
@@ -10,7 +9,7 @@
  * a standard deviation multiplier of 3, and erosion and dilation kernels of
  * size 1.
  */
-/******  740b59df-60e6-45ba-8d03-f44bc856848f  *******/ BrightObjectMasking::BrightObjectMasking() : sigma(3), erosionKernalSize(1), dilationKernalSize(1)
+BrightObjectMasking::BrightObjectMasking() : sigma(3), erosionKernalSize(1), dilationKernalSize(1)
 {
     this->erosionKernel = cv::Mat::ones(this->erosionKernalSize, this->erosionKernalSize, CV_8UC1);
     this->dialationKernel = cv::Mat::ones(this->dilationKernalSize, this->dilationKernalSize, CV_8UC1);
@@ -79,6 +78,7 @@ void BrightObjectMasking::setSigma(uint32_t sigma)
 void BrightObjectMasking::setErosionKernalSize(uint32_t erosionKernalSize)
 {
     this->erosionKernalSize = erosionKernalSize;
+    this->erosionKernel = cv::Mat::ones(this->erosionKernalSize, this->erosionKernalSize, CV_8UC1);
 }
 
 /**
@@ -96,6 +96,7 @@ void BrightObjectMasking::setErosionKernalSize(uint32_t erosionKernalSize)
 void BrightObjectMasking::setDilationKernalSize(uint32_t dilationKernalSize)
 {
     this->dilationKernalSize = dilationKernalSize;
+    this->dialationKernel = cv::Mat::ones(this->dilationKernalSize, this->dilationKernalSize, CV_8UC1);
 }
 
 /**
@@ -193,6 +194,7 @@ void BrightObjectMasking::mask(cv::Mat &image)
 cv::Mat BrightObjectMasking::getMask(cv::Mat &image)
 {
     cv::Mat mask;
+    cv::Mat final;
     cv::Scalar mean;
     cv::Scalar std;
 
@@ -201,8 +203,8 @@ cv::Mat BrightObjectMasking::getMask(cv::Mat &image)
     int threshold = mean[0] + (std[0] * this->sigma);
 
     /* Threshold the image */
-    cv::threshold(image, mask, threshold, 255, CV_8U);
-
+    cv::threshold(image, mask, threshold, 255, cv::THRESH_BINARY);
+    mask.convertTo(mask, CV_8U);
     /* Erode it to remove small bright spots*/
     cv::erode(mask, mask, this->erosionKernel);
 
@@ -213,7 +215,7 @@ cv::Mat BrightObjectMasking::getMask(cv::Mat &image)
     /* Now invert the image to mast these bright spots */
     cv::bitwise_not(mask, mask);
 
-    return mask;
+    return mask.clone();
 }
 
 /**

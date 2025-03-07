@@ -14,7 +14,7 @@ public:
     void setSigma(uint8_t sigma);
     void setMinimumSize(uint32_t size);
     void setMaximumSize(uint32_t size);
-    uint32_t detect(cv::Mat &frameA, cv::Mat &frameB, cv::Rect &detectionBox, double &maxPixelValue);
+    uint32_t detect(cv::Mat &frameA, cv::Mat &frameB, cv::Rect &detectionBox);
     struct Stats
     {
         double absdiffMin;

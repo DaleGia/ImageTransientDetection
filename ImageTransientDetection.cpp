@@ -80,8 +80,7 @@ void ImageTransientDetection::setMaximumSize(uint32_t size)
 uint32_t ImageTransientDetection::detect(
     cv::Mat &frameA,
     cv::Mat &frameB,
-    cv::Rect &detectionBox,
-    double &maxPixelValue)
+    cv::Rect &detectionBox)
 {
     cv::Mat absDiffFrame;
     cv::Mat thresholdFrame;
@@ -98,7 +97,6 @@ uint32_t ImageTransientDetection::detect(
 
     absDiffFrame = cv::Mat::zeros(frameA.size(), frameA.type());
     detectionBox = cv::Rect();
-    maxPixelValue = 0.0;
 
     /* diff the two frames */
     try
@@ -152,8 +150,6 @@ uint32_t ImageTransientDetection::detect(
     cv::Point2f center;
     float radius;
 
-    maxPixelValue = std::numeric_limits<double>::min();
-
     for (size_t i = 0; i < contours.size(); i++)
     {
 
@@ -173,20 +169,6 @@ uint32_t ImageTransientDetection::detect(
                 minY = std::min(minY, point.y);
                 maxX = std::max(maxX, point.x);
                 maxY = std::max(maxY, point.y);
-
-                /* This compares the maximum pixel value of this contour to
-                   the other contours */
-                cv::Rect boundingRect = cv::boundingRect(contours[i]);
-                for (int y = boundingRect.y; y < boundingRect.y + boundingRect.height; y++)
-                {
-                    for (int x = boundingRect.x; x < boundingRect.x + boundingRect.width; x++)
-                    {
-                        if (frameA.at<double>(y, x) > maxPixelValue)
-                        {
-                            maxPixelValue = frameA.at<double>(y, x);
-                        }
-                    }
-                }
             }
         }
 

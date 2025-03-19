@@ -89,18 +89,12 @@ public:
 
         maxVal = statsMax * percent;
         double newMaxVal = maxVal + (maxVal - statsMin);
-        cv::normalize(
-            image,
+        image.convertTo(
             this->currentImage,
-            0,
-            newMaxVal,
-            cv::NORM_MINMAX);
-        cv::normalize(
-            this->currentImage,
-            this->currentImage,
-            0,
-            255,
-            cv::NORM_MINMAX);
+            CV_8U,
+            255.0 / (newMaxVal - statsMin),
+            -minVal * 255.0 / (newMaxVal - statsMin));
+
         if (true == isColour && CV_8UC3)
         {
             // do nothing, good to go

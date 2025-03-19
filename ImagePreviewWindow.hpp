@@ -89,38 +89,36 @@ public:
 
         maxVal = statsMax * percent;
         double newMaxVal = maxVal + (maxVal - statsMin);
-
+        cv::normalize(
+            image,
+            this->currentImage,
+            0,
+            newMaxVal,
+            cv::NORM_MINMAX);
+        cv::normalize(
+            this->currentImage,
+            this->currentImage,
+            0,
+            255,
+            cv::NORM_MINMAX);
         if (true == isColour && CV_8UC3)
         {
-            image.convertTo(
-                this->currentImage,
-                CV_8UC3,
-                255.0 / (newMaxVal - minVal), -minVal * 255.0 / (newMaxVal - minVal));
+            // do nothing, good to go
         }
         else if (true == isColour && CV_16UC3)
         {
-            image.convertTo(
-                this->currentImage,
-                CV_8UC3,
-                65525.0 / (newMaxVal - minVal), -minVal * 65525.0 / (newMaxVal - minVal));
+            this->currentImage.convertTo(this->currentImage, CV_8UC3);
         }
         else if (image.type() == CV_8UC1)
         {
-            image.convertTo(
-                this->currentImage,
-                CV_8UC1,
-                255.0 / (newMaxVal - minVal), -minVal * 255.0 / (newMaxVal - minVal));
+            // do nothing, good to go
         }
         else if (image.type() == CV_16UC1)
         {
-            image.convertTo(
-                this->currentImage,
-                CV_8UC1,
-                4095.0 / (newMaxVal - minVal), -minVal * 4095.0 / (newMaxVal - minVal));
+            this->currentImage.convertTo(this->currentImage, CV_8UC1);
         }
         else
         {
-            cv::normalize(image, this->currentImage, 0, 255, cv::NORM_MINMAX);
             this->currentImage.convertTo(
                 this->currentImage,
                 CV_8UC3);

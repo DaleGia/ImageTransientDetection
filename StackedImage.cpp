@@ -7,9 +7,10 @@
  * stack image.
  */
 StackedImage::StackedImage()
-    : stackAccumulatedExposureUs(0),
+    : stackAccumulatedExposure(0),
       isStackSet(false),
-      accumulatedExposureUs(0),
+      accumulatedExposure(0),
+      brightnessFactor(0),
       numberOfImages(0)
 {
 }
@@ -21,12 +22,12 @@ StackedImage::StackedImage()
  * will be updated when the accumulated exposure us of the stack exceeds this
  * value.
  *
- * @param accumulatedExposureUs The target accumulated exposure us for the stack
+ * @param accumulatedExposure The target accumulated exposure us for the stack
  */
 void StackedImage::setStackAccumulatedExposure(
-    uint64_t accumulatedExposureUs)
+    uint64_t accumulatedExposure)
 {
-    this->stackAccumulatedExposureUs = accumulatedExposureUs;
+    this->stackAccumulatedExposure = accumulatedExposure;
 }
 
 /**
@@ -42,7 +43,7 @@ void StackedImage::setStackAccumulatedExposure(
  */
 
 void StackedImage::setNewStackCallback(
-    std::function<void(cv::Mat &, uint64_t)> callback)
+    std::function<void(cv::Mat &, double)> callback)
 {
     this->newStackCallback = callback;
 }
@@ -63,7 +64,8 @@ void StackedImage::setNewStackCallback(
 
 void StackedImage::add(
     cv::Mat &image,
-    uint64_t exposureUs)
+    double exposure,
+    double gain)
 {
     if (this->stackInProgress.empty())
     {
@@ -72,11 +74,13 @@ void StackedImage::add(
     }
 
     cv::accumulate(image, this->stackInProgress);
-    this->accumulatedExposureUs += exposureUs;
+    this->accumulatedExposure += exposure;
+    this->brightnessFactor += exposure * gain;
+
     this->numberOfImages++;
 
-    if (this->accumulatedExposureUs >=
-        this->stackAccumulatedExposureUs)
+    if (this->accumulatedExposure >=
+        this->stackAccumulatedExposure)
     {
         this->stack = this->stackInProgress.clone();
         this->isStackSet = true;
@@ -88,10 +92,11 @@ void StackedImage::add(
         {
             this->newStackCallback(
                 this->stack,
-                this->accumulatedExposureUs);
+                this->brightnessFactor);
         }
 
-        this->accumulatedExposureUs = 0;
+        this->accumulatedExposure = 0;
+        this->brightnessFactor = 0;
     }
 
     return;
@@ -105,7 +110,7 @@ void StackedImage::add(
  * given accumulated exposure time to the current accumulated exposure time.
  *
  * @param buffer A reference to a cv::Mat to store the current stack.
- * @param accumulatedExposureUs A reference to a uint64_t to store the
+ * @param accumulatedExposure A reference to a uint64_t to store the
  * accumulated exposure time of the current stack in microseconds.
  *
  * @returns
@@ -113,7 +118,7 @@ void StackedImage::add(
  */
 bool StackedImage::getStack(
     cv::Mat &buffer,
-    uint64_t &accumulatedExposureUs)
+    double &brightnessFactor)
 {
     if (false == this->isStackSet)
     {
@@ -122,7 +127,7 @@ bool StackedImage::getStack(
     else
     {
         buffer = this->stack.clone();
-        accumulatedExposureUs = this->accumulatedExposureUs;
+        brightnessFactor = this->brightnessFactor;
     }
     return true;
 }
@@ -164,5 +169,7 @@ void StackedImage::reset(void)
     this->stack.release();
     this->stackInProgress.release();
     this->isStackSet = false;
-    this->accumulatedExposureUs = 0;
+    this->accumulatedExposure = 0;
+    this->brightnessFactor = 0;
+    this->numberOfImages = 0;
 }

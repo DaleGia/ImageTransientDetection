@@ -11,15 +11,15 @@ class StackedImage
 public:
     StackedImage();
 
-    void setStackAccumulatedExposure(uint64_t accumulatedExposureUs);
+    void setStackAccumulatedExposure(uint64_t accumulatedExposure);
     void setNewStackCallback(
-        std::function<void(cv::Mat &, uint64_t)> callback);
+        std::function<void(cv::Mat &, double)> callback);
 
-    void add(cv::Mat &image, uint64_t exposureUs);
+    void add(cv::Mat &image, double exposure, double gain);
 
     bool getStack(
         cv::Mat &buffer,
-        uint64_t &accumulatedExposureUs);
+        double &brightnessFactor);
 
     bool getStack(
         cv::Mat &buffer);
@@ -29,16 +29,17 @@ public:
 private:
     cv::Mat stack;
     cv::Mat stackInProgress;
-    uint64_t stackAccumulatedExposureUs;
+    uint64_t stackAccumulatedExposure;
 
     bool isStackSet;
 
     std::function<void(
         cv::Mat &image,
-        uint64_t accumulatedExposureUs)>
+        double brightnessFactor)>
         newStackCallback;
 
-    uint64_t accumulatedExposureUs;
+    double accumulatedExposure;
+    double brightnessFactor;
     uint64_t numberOfImages;
 };
 

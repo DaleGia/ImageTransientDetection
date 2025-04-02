@@ -11,7 +11,15 @@ class StackedImage
 public:
     StackedImage();
 
+    enum MODE
+    {
+        IMAGECOUNT = 0,
+        ACCUMULATEDEXPOSURE
+    };
+    void setStackMode(StackedImage::MODE mode);
     void setStackAccumulatedExposure(uint64_t accumulatedExposure);
+    void setStackNumberOfImages(uint64_t imageCount);
+
     void setNewStackCallback(
         std::function<void(cv::Mat &, double)> callback);
 
@@ -30,6 +38,7 @@ private:
     cv::Mat stack;
     cv::Mat stackInProgress;
     uint64_t stackAccumulatedExposure;
+    uint64_t stackNumberOfImages;
 
     bool isStackSet;
 
@@ -41,6 +50,7 @@ private:
     double accumulatedExposure;
     double brightnessFactor;
     uint64_t numberOfImages;
+    StackedImage::MODE mode;
 };
 
 #endif

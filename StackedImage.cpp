@@ -8,6 +8,8 @@
  */
 StackedImage::StackedImage()
     : stackAccumulatedExposure(0),
+      stackNumberOfImages(0),
+      mode(StackedImage::MODE::IMAGECOUNT),
       isStackSet(false),
       accumulatedExposure(0),
       brightnessFactor(0),
@@ -28,6 +30,16 @@ void StackedImage::setStackAccumulatedExposure(
     uint64_t accumulatedExposure)
 {
     this->stackAccumulatedExposure = accumulatedExposure;
+}
+
+void StackedImage::setStackNumberOfImages(uint64_t imageCount)
+{
+    this->stackNumberOfImages = imageCount;
+}
+
+void StackedImage::setStackMode(StackedImage::MODE mode)
+{
+    this->mode = mode;
 }
 
 /**
@@ -79,24 +91,50 @@ void StackedImage::add(
 
     this->numberOfImages++;
 
-    if (this->accumulatedExposure >=
-        this->stackAccumulatedExposure)
+    if (StackedImage::MODE::ACCUMULATEDEXPOSURE == this->mode)
     {
-        this->stack = this->stackInProgress.clone();
-        this->isStackSet = true;
-
-        this->stackInProgress =
-            cv::Mat::zeros(image.size(), CV_64F);
-
-        if (nullptr != this->newStackCallback)
+        if (this->accumulatedExposure >=
+            this->stackAccumulatedExposure)
         {
-            this->newStackCallback(
-                this->stack,
-                this->brightnessFactor);
-        }
+            this->stack = this->stackInProgress.clone();
+            this->isStackSet = true;
 
-        this->accumulatedExposure = 0;
-        this->brightnessFactor = 0;
+            this->stackInProgress =
+                cv::Mat::zeros(image.size(), CV_64F);
+
+            if (nullptr != this->newStackCallback)
+            {
+                this->newStackCallback(
+                    this->stack,
+                    this->brightnessFactor);
+            }
+
+            this->accumulatedExposure = 0;
+            this->brightnessFactor = 0;
+            this->numberOfImages = 0;
+        }
+    }
+    else
+    {
+        if (this->numberOfImages >= this->stackNumberOfImages)
+        {
+            this->stack = this->stackInProgress.clone();
+            this->isStackSet = true;
+
+            this->stackInProgress =
+                cv::Mat::zeros(image.size(), CV_64F);
+
+            if (nullptr != this->newStackCallback)
+            {
+                this->newStackCallback(
+                    this->stack,
+                    this->brightnessFactor);
+            }
+
+            this->accumulatedExposure = 0;
+            this->brightnessFactor = 0;
+            this->numberOfImages = 0;
+        }
     }
 
     return;

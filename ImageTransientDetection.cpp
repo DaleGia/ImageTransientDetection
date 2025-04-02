@@ -17,6 +17,7 @@ void ImageTransientDetection::setDebugMode(bool debug)
         ImagePreviewWindow frameAWindow("frameA");
         ImagePreviewWindow frameBWindow("frameB");
         ImagePreviewWindow diffWindow("diff");
+        std::cout << "Debug mode enabled" << std::endl;
     }
 }
 
@@ -237,7 +238,6 @@ uint32_t ImageTransientDetection::detect(
         std::cout << std::left << std::setw(20) << "STD";
         std::cout << std::left << std::setw(20) << "Sigma";
         std::cout << std::left << std::setw(20) << "Num of Contours";
-        std::cout << std::left << std::setw(20) << "Largest Contour";
 
         std::cout << std::endl;
         std::cout << std::left << std::setw(20) << "DIFF IMAGE";
@@ -247,7 +247,6 @@ uint32_t ImageTransientDetection::detect(
         std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffStdDev;
         std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->sigmaThreshold;
         std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->numberOfContours;
-        std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->largestContour;
         std::cout << std::endl;
     }
 

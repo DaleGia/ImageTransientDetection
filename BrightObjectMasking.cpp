@@ -101,40 +101,6 @@ void BrightObjectMasking::setDilationKernalSize(uint32_t dilationKernalSize)
 
 /**
  * @brief
- * Enable saving of images when masking bright objects.
- *
- * @param filepath
- * The directory path where images should be saved.
- *
- * @details
- * This function enables the saving of images when masking bright objects
- * by setting the filepath and a flag to indicate images should be saved.
- * The provided filepath is validated to ensure it is a valid directory.
- */
-
-void BrightObjectMasking::enableBrightMaskImageSaving(std::filesystem::path filepath)
-{
-    this->filepath = filepath;
-    this->saveImages = true;
-    this->validateFilepath();
-}
-/**
- * @brief
- * Disable saving of images when masking bright objects.
- *
- * @details
- * This function disables the saving of images when masking bright objects.
- * It is used to turn off the saving of images when it is not desired.
- */
-
-void BrightObjectMasking::disableBrightMaskImageSaving()
-{
-    this->filepath.clear();
-    this->saveImages = false;
-}
-
-/**
- * @brief
  * Mask bright objects in the given image.
  *
  * @details
@@ -216,19 +182,4 @@ cv::Mat BrightObjectMasking::getMask(cv::Mat &image)
     cv::bitwise_not(mask, mask);
 
     return mask.clone();
-}
-
-/**
- * @brief
- * Validate the given filepath is a valid directory path.
- *
- * @throws
- * std::invalid_argument if the filepath is not a valid directory path.
- */
-void BrightObjectMasking::validateFilepath()
-{
-    if (!std::filesystem::is_directory(filepath))
-    {
-        throw std::invalid_argument("BrightObjectMasking filepath is not a valid directory path");
-    }
 }

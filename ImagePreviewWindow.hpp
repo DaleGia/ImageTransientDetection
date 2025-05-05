@@ -9,13 +9,13 @@
 class ImagePreviewWindow
 {
 public:
-    ImagePreviewWindow(std::string windowName) : name(windowName)
+    ImagePreviewWindow(std::string windowName) : name(windowName), statName(windowName + "_stats"), zoomName(windowName + "_zoom")
     {
         cv::namedWindow(name, cv::WINDOW_NORMAL || cv::WindowFlags::WINDOW_KEEPRATIO);
         cv::setMouseCallback(name, ImagePreviewWindow::onMouseWheel, this);
     };
 
-    ImagePreviewWindow(std::string windowName, uint32_t width, uint32_t height) : name(windowName), width(width), height(height)
+    ImagePreviewWindow(std::string windowName, uint32_t width, uint32_t height) : name(windowName), statName(windowName + "_stats"), zoomName(windowName + "_zoom"), width(width), height(height)
     {
         cv::namedWindow(name, cv::WINDOW_NORMAL || cv::WindowFlags::WINDOW_KEEPRATIO);
         cv::setMouseCallback(name, ImagePreviewWindow::onMouseWheel, this);
@@ -24,7 +24,6 @@ public:
 
     void setSize(uint16_t width, uint16_t height)
     {
-        cv::setWindowProperty(this->name, cv::WindowPropertyFlags::WND_PROP_ASPECT_RATIO, width / height);
         cv::resizeWindow(this->name, width, height);
         this->width = width;
         this->height = height;
@@ -41,7 +40,7 @@ public:
         {
             return;
         }
-
+        this->currentImageMutex.lock();
         this->currentImage = image.clone();
 
         srcType = image.type();
@@ -65,7 +64,9 @@ public:
                 this->currentImage,
                 CV_8UC1);
         }
+        cv::namedWindow(name, cv::WINDOW_NORMAL || cv::WindowFlags::WINDOW_KEEPRATIO);
         cv::imshow(this->name, this->currentImage);
+        this->currentImageMutex.unlock();
         if (this->width != 0 && this->height != 0)
         {
             cv::setWindowProperty(this->name, cv::WindowPropertyFlags::WND_PROP_ASPECT_RATIO, this->width / this->height);
@@ -90,7 +91,7 @@ public:
         {
             return;
         }
-
+        this->currentImageMutex.lock();
         currentImage = image.clone();
 
         srcType = image.type();
@@ -135,8 +136,11 @@ public:
         }
         std::string title = name + " Min: " + std::to_string(static_cast<int>(statsMin)) + " Max: " + std::to_string(static_cast<int>(statsMax)) + " Mean: " + std::to_string(static_cast<int>(mean[0])) + " STD: " + std::to_string(static_cast<int>(std[0]));
 
+        cv::namedWindow(name, cv::WINDOW_NORMAL || cv::WindowFlags::WINDOW_KEEPRATIO);
         cv::setWindowTitle(this->name, title);
         cv::imshow(this->name, this->currentImage);
+        this->currentImageMutex.unlock();
+
         if (this->width != 0 && this->height != 0)
         {
             cv::setWindowProperty(this->name, cv::WindowPropertyFlags::WND_PROP_ASPECT_RATIO, this->width / this->height);
@@ -147,6 +151,7 @@ public:
 
 private:
     cv::Mat currentImage;
+    std::mutex currentImageMutex;
     std::string name;
 
     bool zoomEnabled = false;
@@ -163,6 +168,7 @@ private:
         int x1 = std::max(0, this->xzoom - 50);
         int y1 = std::max(0, this->yzoom - 50);
 
+        this->currentImageMutex.lock();
         // Calculate the bottom-right corner, ensuring it's within the image boundaries
         int x2 = std::min(this->currentImage.cols - 1, this->xzoom + 50);
         int y2 = std::min(this->currentImage.rows - 1, this->yzoom + 50);
@@ -172,7 +178,9 @@ private:
 
         // Extract the ROI from the image
         cv::Mat cropped_img = this->currentImage(roi).clone();
+        this->currentImageMutex.unlock();
         cv::resize(cropped_img, cropped_img, cv::Size(400, 400));
+        cv::namedWindow(this->zoomName, cv::WINDOW_NORMAL || cv::WindowFlags::WINDOW_KEEPRATIO);
         cv::imshow(this->zoomName, cropped_img);
     };
 
@@ -188,6 +196,7 @@ private:
         int x1 = std::max(0, this->xzoom - 25);
         int y1 = std::max(0, this->yzoom - 25);
 
+        this->currentImageMutex.lock();
         // Calculate the bottom-right corner, ensuring it's within the image boundaries
         int x2 = std::min(this->currentImage.cols - 1, this->xzoom + 25);
         int y2 = std::min(this->currentImage.rows - 1, this->yzoom + 25);
@@ -197,7 +206,7 @@ private:
 
         // Extract the ROI from the image
         cv::Mat cropped_img = this->currentImage(roi).clone();
-
+        this->currentImageMutex.unlock();
         cv::meanStdDev(cropped_img, mean, std);
         cv::minMaxLoc(cropped_img, &statsMin, &statsMax);
 
@@ -217,6 +226,7 @@ private:
         }
         cv::resize(cropped_img, cropped_img, cv::Size(400, 400), 0, 0, cv::INTER_NEAREST);
         std::string title = "Min: " + std::to_string((int)statsMin) + " Max: " + std::to_string((int)statsMax) + " Mean: " + std::to_string((int)mean[0]) + " STD: " + std::to_string((int)std[0]);
+        cv::namedWindow(this->statName, cv::WINDOW_NORMAL || cv::WindowFlags::WINDOW_KEEPRATIO);
         cv::setWindowTitle(this->statName, title);
         cv::imshow(this->statName, cropped_img);
     }
@@ -240,7 +250,13 @@ private:
             else
             {
                 window->zoomEnabled = false;
-                cv::destroyWindow(window->zoomName);
+                try
+                {
+                    cv::destroyWindow(window->zoomName);
+                }
+                catch (std::exception &e)
+                {
+                }
             }
         }
         else if (event == cv::EVENT_RBUTTONDOWN)
@@ -252,7 +268,13 @@ private:
             else
             {
                 window->statEnabled = false;
-                cv::destroyWindow(window->statName);
+                try
+                {
+                    cv::destroyWindow(window->statName);
+                }
+                catch (std::exception &e)
+                {
+                }
             }
         }
 

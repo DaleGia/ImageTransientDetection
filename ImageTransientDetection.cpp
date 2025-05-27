@@ -192,59 +192,8 @@ uint32_t ImageTransientDetection::detect(
     {
         ImagePreviewWindow thresholdWindow("threshold", 800, 600);
 
-        // if (!detectionBox.empty())
-        // {
-        //     double minVal, maxVal;
-        //     cv::minMaxLoc(frameA, &minVal, &maxVal);
-        //     frameA.convertTo(frameA, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
-        //     cv::minMaxLoc(frameB, &minVal, &maxVal);
-        //     frameB.convertTo(frameB, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
-        //     cv::minMaxLoc(absDiffFrame, &minVal, &maxVal);
-        //     absDiffFrame.convertTo(absDiffFrame, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
-        //     cv::rectangle(
-        //         frameA,
-        //         detectionBox,
-        //         cv::Scalar(255, 255, 255),
-        //         2);
-        //     cv::rectangle(
-        //         frameA,
-        //         detectionBox,
-        //         cv::Scalar(255, 255, 255),
-        //         2);
-        //     cv::rectangle(
-        //         absDiffFrame,
-        //         detectionBox,
-        //         cv::Scalar(255, 255, 255),
-        //         2);
-        //     cv::rectangle(
-        //         thresholdFrame,
-        //         detectionBox,
-        //         cv::Scalar(255, 255, 255),
-        //         2);
-        // }
         thresholdWindow.setImage(thresholdFrame);
-        // frameAWindow.setImageStreched(frameA, 1);
-        // frameBWindow.setImageStreched(frameB, 1);
-        // diffWindow.setImageStreched(absDiffFrame, 1);
         cv::waitKey(1);
-
-        // std::cout << std::left << std::setw(20) << "";
-        // std::cout << std::left << std::setw(20) << "Minimum";
-        // std::cout << std::left << std::setw(20) << "Maximum";
-        // std::cout << std::left << std::setw(20) << "Mean";
-        // std::cout << std::left << std::setw(20) << "STD";
-        // std::cout << std::left << std::setw(20) << "Sigma";
-        // std::cout << std::left << std::setw(20) << "Num of Contours";
-
-        // std::cout << std::endl;
-        // std::cout << std::left << std::setw(20) << "DIFF IMAGE";
-        // std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffMin;
-        // std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffMax;
-        // std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffMean;
-        // std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->absdiffStdDev;
-        // std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->sigmaThreshold;
-        // std::cout << std::left << std::setw(20) << std::fixed << std::setprecision(2) << this->numberOfContours;
-        // std::cout << std::endl;
     }
 
     return validContours.size();

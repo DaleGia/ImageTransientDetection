@@ -22,7 +22,7 @@ public:
     void enableBrightMaskImageSaving(std::filesystem::path filepath);
     void disableBrightMaskImageSaving();
     void mask(cv::Mat &image);
-    cv::Mat getMask(cv::Mat &image);
+    void getMask(cv::Mat &image, cv::Mat &mask);
 
 private:
     uint32_t sigma;

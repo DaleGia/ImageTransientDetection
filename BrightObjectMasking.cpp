@@ -157,9 +157,8 @@ void BrightObjectMasking::mask(cv::Mat &image)
  * to remove small bright spots and make sure all the bright spots are fully
  * covered. The mask is then inverted to mask out the bright spots.
  */
-cv::Mat BrightObjectMasking::getMask(cv::Mat &image)
+void BrightObjectMasking::getMask(cv::Mat &image, cv::Mat &mask)
 {
-    cv::Mat mask;
     cv::Mat final;
     cv::Scalar mean;
     cv::Scalar std;
@@ -180,6 +179,4 @@ cv::Mat BrightObjectMasking::getMask(cv::Mat &image)
 
     /* Now invert the image to mast these bright spots */
     cv::bitwise_not(mask, mask);
-
-    return mask.clone();
 }

@@ -7,13 +7,6 @@
  * stack image.
  */
 StackedImage::StackedImage()
-    : stackAccumulatedExposure(0),
-      stackNumberOfImages(0),
-      mode(StackedImage::MODE::IMAGECOUNT),
-      isStackSet(false),
-      accumulatedExposure(0),
-      brightnessFactor(0),
-      numberOfImages(0)
 {
 }
 
@@ -29,12 +22,14 @@ StackedImage::StackedImage()
 void StackedImage::setStackAccumulatedExposure(
     uint64_t accumulatedExposure)
 {
-    this->stackAccumulatedExposure = accumulatedExposure;
+    this->configuredStackAccumulatedExposure = accumulatedExposure;
+    this->mode = StackedImage::MODE::ACCUMULATEDEXPOSURE;
 }
 
 void StackedImage::setStackNumberOfImages(uint64_t imageCount)
 {
-    this->stackNumberOfImages = imageCount;
+    this->configuredStackNumberOfImages = imageCount;
+    this->mode = StackedImage::MODE::IMAGECOUNT;
 }
 
 void StackedImage::setStackMode(StackedImage::MODE mode)
@@ -55,7 +50,7 @@ void StackedImage::setStackMode(StackedImage::MODE mode)
  */
 
 void StackedImage::setNewStackCallback(
-    std::function<void(cv::Mat &, double)> callback)
+    std::function<void(cv::Mat &, double, double, uint64_t)> callback)
 {
     this->newStackCallback = callback;
 }
@@ -77,8 +72,10 @@ void StackedImage::setNewStackCallback(
 void StackedImage::add(
     cv::Mat &image,
     double exposure,
-    double gain)
+    double brightness)
 {
+    bool newStackFlag = false;
+
     if (this->stackInProgress.empty())
     {
         this->stackInProgress =
@@ -86,57 +83,62 @@ void StackedImage::add(
     }
 
     cv::accumulate(image, this->stackInProgress);
+
     this->accumulatedExposure += exposure;
-    this->brightnessFactor += exposure * gain;
+    this->brightnessFactor += brightness;
 
     this->numberOfImages++;
 
     if (StackedImage::MODE::ACCUMULATEDEXPOSURE == this->mode)
     {
         if (this->accumulatedExposure >=
-            this->stackAccumulatedExposure)
+            this->configuredStackAccumulatedExposure)
         {
-            this->stack = this->stackInProgress.clone();
-            this->isStackSet = true;
-
-            this->stackInProgress =
-                cv::Mat::zeros(image.size(), CV_64F);
-
-            if (nullptr != this->newStackCallback)
-            {
-                this->newStackCallback(
-                    this->stack,
-                    this->brightnessFactor);
-            }
-
-            this->accumulatedExposure = 0;
-            this->brightnessFactor = 0;
-            this->numberOfImages = 0;
+            newStackFlag = true;
         }
     }
-    else
+    else if (StackedImage::MODE::IMAGECOUNT == this->mode)
+
     {
-        if (this->numberOfImages >= this->stackNumberOfImages)
+        if (this->numberOfImages >= this->configuredStackNumberOfImages)
         {
-            this->stack = this->stackInProgress.clone();
-            this->isStackSet = true;
-
-            this->stackInProgress =
-                cv::Mat::zeros(image.size(), CV_64F);
-
-            if (nullptr != this->newStackCallback)
-            {
-                this->newStackCallback(
-                    this->stack,
-                    this->brightnessFactor);
-            }
-
-            this->accumulatedExposure = 0;
-            this->brightnessFactor = 0;
-            this->numberOfImages = 0;
+            newStackFlag = true;
         }
     }
 
+    if (true == newStackFlag)
+    {
+        this->setStack = this->stackInProgress.clone();
+        this->setBrightnessFactor = this->brightnessFactor;
+        this->setAccumulatedExposure = this->accumulatedExposure;
+        this->setStackNumberOfImagesCount = this->numberOfImages;
+        this->isStackSet = true;
+
+        this->accumulatedExposure = 0;
+        this->brightnessFactor = 0;
+        this->numberOfImages = 0;
+
+        this->stackInProgress =
+            cv::Mat::zeros(image.size(), CV_64F);
+
+        if (nullptr != this->newStackCallback)
+        {
+            this->newStackCallback(
+                this->setStack,
+                this->setBrightnessFactor,
+                this->setAccumulatedExposure,
+                this->setStackNumberOfImagesCount);
+        }
+    }
+
+    return;
+}
+
+void StackedImage::add(
+    cv::Mat &image,
+    double exposure)
+{
+    this->add(image, exposure, 1.0);
     return;
 }
 
@@ -156,7 +158,9 @@ void StackedImage::add(
  */
 bool StackedImage::getStack(
     cv::Mat &buffer,
-    double &brightnessFactor)
+    double &brightnessFactor,
+    double &accumulatedExposure,
+    uint64_t &numberOfImages)
 {
     if (false == this->isStackSet)
     {
@@ -164,8 +168,10 @@ bool StackedImage::getStack(
     }
     else
     {
-        buffer = this->stack.clone();
-        brightnessFactor = this->brightnessFactor;
+        buffer = this->setStack.clone();
+        brightnessFactor = this->setBrightnessFactor;
+        accumulatedExposure = this->setAccumulatedExposure;
+        numberOfImages = this->setStackNumberOfImagesCount;
     }
     return true;
 }
@@ -188,7 +194,7 @@ bool StackedImage::getStack(cv::Mat &buffer)
     }
     else
     {
-        buffer = this->stack.clone();
+        buffer = this->setStack.clone();
     }
 
     return true;
@@ -204,10 +210,13 @@ bool StackedImage::getStack(cv::Mat &buffer)
 
 void StackedImage::reset(void)
 {
-    this->stack.release();
+    this->setStack.release();
     this->stackInProgress.release();
     this->isStackSet = false;
     this->accumulatedExposure = 0;
     this->brightnessFactor = 0;
     this->numberOfImages = 0;
+    this->setAccumulatedExposure = 0;
+    this->setBrightnessFactor = 0;
+    this->setStackNumberOfImagesCount = 0;
 }

@@ -21,13 +21,15 @@ public:
     void setStackNumberOfImages(uint64_t imageCount);
 
     void setNewStackCallback(
-        std::function<void(cv::Mat &, double)> callback);
+        std::function<void(cv::Mat &, double, double, uint64_t)> callback);
 
     void add(cv::Mat &image, double exposure, double gain);
-
+    void add(cv::Mat &image, double exposure);
     bool getStack(
         cv::Mat &buffer,
-        double &brightnessFactor);
+        double &brightnessFactor,
+        double &accumulatedExposure,
+        uint64_t &numberOfImages);
 
     bool getStack(
         cv::Mat &buffer);
@@ -35,22 +37,29 @@ public:
     void reset(void);
 
 private:
-    cv::Mat stack;
+    std::function<void(
+        cv::Mat &image,
+        double brightnessFactor,
+        double accumulatedExposure,
+        uint64_t numberOfImages)>
+        newStackCallback;
+
+    cv::Mat setStack;
+    double setAccumulatedExposure = 0.0;
+    double setBrightnessFactor = 0.0;
+    uint64_t setStackNumberOfImagesCount = 0;
+
     cv::Mat stackInProgress;
-    uint64_t stackAccumulatedExposure;
-    uint64_t stackNumberOfImages;
+    uint64_t configuredStackAccumulatedExposure = 0;
+    uint64_t configuredStackNumberOfImages = 0;
 
     bool isStackSet;
 
-    std::function<void(
-        cv::Mat &image,
-        double brightnessFactor)>
-        newStackCallback;
+    double accumulatedExposure = 0.0;
+    double brightnessFactor = 0.0;
+    uint64_t numberOfImages = 0;
 
-    double accumulatedExposure;
-    double brightnessFactor;
-    uint64_t numberOfImages;
-    StackedImage::MODE mode;
+    StackedImage::MODE mode = StackedImage::MODE::IMAGECOUNT;
 };
 
 #endif

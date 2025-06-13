@@ -81,6 +81,7 @@ void ImageTransientDetection::setMaximumSize(uint32_t size)
 uint32_t ImageTransientDetection::detect(
     cv::Mat &frameA,
     cv::Mat &frameB,
+    cv::Mat &mask,
     cv::Rect &detectionBox)
 {
     cv::Mat absDiffFrame;
@@ -95,6 +96,7 @@ uint32_t ImageTransientDetection::detect(
     cv::Scalar mean;
     cv::Scalar std;
     double threshold;
+    cv::Mat maskedAbs;
 
     absDiffFrame = cv::Mat::zeros(frameA.size(), frameA.type());
     detectionBox = cv::Rect();
@@ -103,6 +105,14 @@ uint32_t ImageTransientDetection::detect(
     try
     {
         cv::absdiff(frameA, frameB, absDiffFrame);
+        if (false == mask.empty())
+        {
+            absDiffFrame.copyTo(maskedAbs, mask);
+        }
+        else
+        {
+            maskedAbs = absDiffFrame;
+        }
     }
     catch (const std::exception &e)
     {
@@ -111,12 +121,12 @@ uint32_t ImageTransientDetection::detect(
 
     try
     {
-        cv::minMaxLoc(absDiffFrame, &min, &max);
-        cv::meanStdDev(absDiffFrame, mean, std);
-
+        cv::minMaxLoc(maskedAbs, &min, &max);
+        cv::meanStdDev(maskedAbs, mean, std);
         threshold = mean[0] + (this->sigma * std[0]);
+
         cv::threshold(
-            absDiffFrame,
+            maskedAbs,
             thresholdFrame,
             threshold,
             255,

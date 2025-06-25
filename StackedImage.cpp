@@ -50,7 +50,7 @@ void StackedImage::setStackMode(StackedImage::MODE mode)
  */
 
 void StackedImage::setNewStackCallback(
-    std::function<void(cv::Mat &, double, double, uint64_t)> callback)
+    std::function<void(cv::Mat &, double, double, uint64_t, cv::Mat &)> callback)
 {
     this->newStackCallback = callback;
 }
@@ -108,6 +108,7 @@ void StackedImage::add(
 
     if (true == newStackFlag)
     {
+        this->lastAddedImage = image.clone();
         this->setStack = this->stackInProgress.clone();
         this->setBrightnessFactor = this->brightnessFactor;
         this->setAccumulatedExposure = this->accumulatedExposure;
@@ -127,7 +128,8 @@ void StackedImage::add(
                 this->setStack,
                 this->setBrightnessFactor,
                 this->setAccumulatedExposure,
-                this->setStackNumberOfImagesCount);
+                this->setStackNumberOfImagesCount,
+                this->lastAddedImage);
         }
     }
 

@@ -21,7 +21,7 @@ public:
     void setStackNumberOfImages(uint64_t imageCount);
 
     void setNewStackCallback(
-        std::function<void(cv::Mat &, double, double, uint64_t)> callback);
+        std::function<void(cv::Mat &, double, double, uint64_t, cv::Mat &)> callback);
 
     void add(cv::Mat &image, double exposure, double gain);
     void add(cv::Mat &image, double exposure);
@@ -38,10 +38,11 @@ public:
 
 private:
     std::function<void(
-        cv::Mat &image,
+        cv::Mat &stack,
         double brightnessFactor,
         double accumulatedExposure,
-        uint64_t numberOfImages)>
+        uint64_t numberOfImages,
+        cv::Mat &lastAddedImage)>
         newStackCallback;
 
     cv::Mat setStack;
@@ -52,6 +53,8 @@ private:
     cv::Mat stackInProgress;
     uint64_t configuredStackAccumulatedExposure = 0;
     uint64_t configuredStackNumberOfImages = 0;
+
+    cv::Mat lastAddedImage;
 
     bool isStackSet;
 
